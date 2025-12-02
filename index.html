@@ -765,9 +765,14 @@
         
         // 폼 데이터를 객체로 변환하는 함수
         function createContainerObject(formData) {
+            const year=formData.get('importDate').split('-')[0];
+            const month=formData.get('importDate').split('-')[1];
+            const day=formData.get('importDate').split('-')[2];
+            const date= year + '-' + (month.length===1 ? '0'+month : month) + '-' + (day.length===1 ? '0'+day : day);
+            console.log('Formatted date:', date);
             const containerObject = {
                 // 기본 정보
-                date: formData.get('importDate'),
+                date: date,
                 consignee: formData.get('shipper'),
                 container: formData.get('container'),
                 count: formData.get('seal') || '',
