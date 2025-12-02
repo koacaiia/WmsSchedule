@@ -4,12 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>화인통상 물류 컨테이너 관리 시스템</title>
-    <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+    <!-- <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-database-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-analytics-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-storage-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-messaging-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script> -->
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -378,6 +378,38 @@
             }
         }
     </style>
+    
+    <!-- Firebase SDK -->
+    <script type="module">
+        // Import Firebase functions
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { getDatabase, ref, push, set, onValue } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
+        
+        // Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyDLzmZyt5nZwCk98iZ6wi01y7Jxio1ppZQ",
+                authDomain: "fine-bondedwarehouse.firebaseapp.com",
+                databaseURL: "https://fine-bondedwarehouse-default-rtdb.asia-southeast1.firebasedatabase.app",
+                projectId: "fine-bondedwarehouse",
+                storageBucket: "fine-bondedwarehouse.appspot.com",
+                messagingSenderId: "415417723331",
+                appId: "1:415417723331:web:15212f190062886281b576",
+                measurementId: "G-SWBR4359JQ"
+        };
+        
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const database = getDatabase(app);
+        
+        // Make Firebase functions globally available
+        window.firebaseDb = database;
+        window.firebaseRef = ref;
+        window.firebasePush = push;
+        window.firebaseSet = set;
+        window.firebaseOnValue = onValue;
+        
+        console.log('Firebase Realtime Database initialized');
+    </script>
 </head>
 <body>
     <div class="container">
@@ -622,29 +654,29 @@
     </div>
     
     <script>
-        const firebaseConfig = {
-                apiKey: "AIzaSyDLzmZyt5nZwCk98iZ6wi01y7Jxio1ppZQ",
-                authDomain: "fine-bondedwarehouse.firebaseapp.com",
-                databaseURL: "https://fine-bondedwarehouse-default-rtdb.asia-southeast1.firebasedatabase.app",
-                projectId: "fine-bondedwarehouse",
-                storageBucket: "fine-bondedwarehouse.appspot.com",
-                messagingSenderId: "415417723331",
-                appId: "1:415417723331:web:15212f190062886281b576",
-                measurementId: "G-SWBR4359JQ"
-            };
-            if(firebase.apps.length==0){
-            firebase.initializeApp(firebaseConfig);
-            console.log('Firebase initialized with config:', {
-                projectId: firebaseConfig.projectId,
-                messagingSenderId: firebaseConfig.messagingSenderId,
-                appId: firebaseConfig.appId
-            });
-            }
-            else{
-            firebase.app();
-            console.log('Firebase app already initialized');
-            }
-        // 테이블 검색 기능
+        // const firebaseConfig = {
+        //         apiKey: "AIzaSyDLzmZyt5nZwCk98iZ6wi01y7Jxio1ppZQ",
+        //         authDomain: "fine-bondedwarehouse.firebaseapp.com",
+        //         databaseURL: "https://fine-bondedwarehouse-default-rtdb.asia-southeast1.firebasedatabase.app",
+        //         projectId: "fine-bondedwarehouse",
+        //         storageBucket: "fine-bondedwarehouse.appspot.com",
+        //         messagingSenderId: "415417723331",
+        //         appId: "1:415417723331:web:15212f190062886281b576",
+        //         measurementId: "G-SWBR4359JQ"
+        //     };
+        //     if(firebase.apps.length==0){
+        //     firebase.initializeApp(firebaseConfig);
+        //     console.log('Firebase initialized with config:', {
+        //         projectId: firebaseConfig.projectId,
+        //         messagingSenderId: firebaseConfig.messagingSenderId,
+        //         appId: firebaseConfig.appId
+        //     });
+        //     }
+        //     else{
+        //     firebase.app();
+        //     console.log('Firebase app already initialized');
+        //     }
+        // // 테이블 검색 기능
         function searchTable() {
             const input = document.getElementById('searchInput');
             const filter = input.value.toUpperCase();
@@ -731,8 +763,78 @@
             document.getElementById('newArrivalForm').reset();
         }
         
+        // 폼 데이터를 객체로 변환하는 함수
+        function createContainerObject(formData) {
+            const containerObject = {
+                // 기본 정보
+                date: formData.get('importDate'),
+                consignee: formData.get('shipper'),
+                container: formData.get('container'),
+                count: formData.get('seal') || '',
+                bl: formData.get('bl'),
+                
+                // 화물 정보
+                description: formData.get('itemName'),
+                qtyEa: parseInt(formData.get('qtyEa')) || 0,
+                qtyPlt: parseInt(formData.get('qtyPlt')) || 0,
+                spec: formData.get('spec') || '',
+                shape: formData.get('shape') || '',
+                remark: formData.get('remark') || '',
+                
+                // 시스템 정보
+                working: "", // 입고대기
+                priority: 'normal',
+                registeredBy: 'system',
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                refValue:"DeptName/WareHouseDept2/InCargo/"+formData.get('importDate')+"_"+formData.get('bl')+"_"+formData.get('itemName')+"_"+formData.get('seal')+"_"+formData.get('container')
+            };
+            
+            return containerObject;
+        }
+        
+        // Realtime Database에 데이터 업로드 함수
+        async function uploadToRealtimeDatabase(containerObject) {
+            try {
+                // containerObject.refValue를 키로 사용하여 바로 업로드
+                const containerRef = window.firebaseRef(window.firebaseDb, containerObject.refValue);
+                await window.firebaseSet(containerRef, containerObject);
+                
+                console.log('컨테이너 데이터가 성공적으로 업로드되었습니다. Key:', containerObject.refValue);
+                return { success: true, id: containerObject.refValue };
+                
+            } catch (error) {
+                console.error('데이터 업로드 오류:', error);
+                return { success: false, error: error.message };
+            }
+        }
+        
+        // 중복 컨테이너 번호 체크 함수
+        function checkDuplicateContainer(containerNumber) {
+            return new Promise((resolve) => {
+                const containersRef = window.firebaseRef(window.firebaseDb, 'containers');
+                
+                window.firebaseOnValue(containersRef, (snapshot) => {
+                    let exists = false;
+                    
+                    if (snapshot.exists()) {
+                        const containers = snapshot.val();
+                        
+                        // 모든 컨테이너를 체크하여 중복 번호 확인
+                        Object.values(containers).forEach(container => {
+                            if (container.containerNumber === containerNumber) {
+                                exists = true;
+                            }
+                        });
+                    }
+                    
+                    resolve(exists);
+                }, { onlyOnce: true }); // 단일 읽기로 설정
+            });
+        }
+        
         // 신규입고 등록 함수
-        function submitNewArrival() {
+        async function submitNewArrival() {
             const form = document.getElementById('newArrivalForm');
             const formData = new FormData(form);
             
@@ -755,14 +857,82 @@
                 return;
             }
             
-            // 여기에 실제 데이터 저장 로직 추가
-            alert('신규입고가 성공적으로 등록되었습니다.');
+            // 중복 컨테이너 번호 체크
+            const containerNumber = formData.get('container');
+            const isDuplicate = await checkDuplicateContainer(containerNumber);
             
-            // 테이블에 새 행 추가 (예시)
-            addRowToTable(formData);
+            if (isDuplicate) {
+                alert('이미 등록된 컨테이너 번호입니다.');
+                document.getElementById('container').style.borderColor = '#dc3545';
+                return;
+            }
             
-            // 모달 닫기
-            closeModal();
+            // 폼 데이터를 객체로 변환
+            const containerObject = createContainerObject(formData);
+            
+            // 생성된 객체를 콘솔에 출력하여 확인
+            console.log('생성된 컨테이너 객체:', containerObject);
+            
+            // Realtime Database에 업로드 시도
+            const uploadResult = await uploadToRealtimeDatabase(containerObject);
+            
+            if (uploadResult.success) {
+                alert(`신규입고가 성공적으로 등록되었습니다!\nID: ${uploadResult.id}`);
+                
+                // 테이블에 새 행 추가
+                addRowToTable(formData, uploadResult.id);
+                
+                // 요약 카드 업데이트
+                updateSummaryCards();
+                
+                // 모달 닫기
+                closeModal();
+                
+            } else {
+                alert(`데이터 업로드 실패: ${uploadResult.error}`);
+            }
+        }
+        
+        // 테이블에 새 행 추가 함수
+        function addRowToTable(formData, containerId) {
+            const table = document.getElementById('containerTable').getElementsByTagName('tbody')[0];
+            const newRow = table.insertRow(0);
+            
+            const rowCount = table.rows.length;
+            
+            newRow.innerHTML = `
+                <td>${rowCount}</td>
+                <td>${formData.get('importDate')}</td>
+                <td><strong>${formData.get('container')}</strong></td>
+                <td>${formData.get('shipper') || '-'}</td>
+                <td>${formData.get('itemName')}</td>
+                <td>${formData.get('qtyPlt') || '-'}</td>
+                <td>${formData.get('spec') || '-'}</td>
+                <td>${formData.get('shape') || '-'}</td>
+                <td><span class="status-pending">입고대기</span></td>
+                <td class="priority-normal">보통</td>
+                <td>시스템</td>
+                <td>${formData.get('remark') || '-'}</td>
+            `;
+            
+            // 데이터 ID 속성 추가
+            newRow.setAttribute('data-container-id', containerId);
+        }
+        
+        // 요약 카드 업데이트 함수
+        function updateSummaryCards() {
+            const totalCard = document.querySelector('.summary-card .number');
+            if (totalCard) {
+                const currentTotal = parseInt(totalCard.textContent) || 0;
+                totalCard.textContent = currentTotal + 1;
+            }
+        }
+        function updateSummaryCards() {
+            const totalCard = document.querySelector('.summary-card .number');
+            if (totalCard) {
+                const currentTotal = parseInt(totalCard.textContent) || 0;
+                totalCard.textContent = currentTotal + 1;
+            }
         }
         
         // 테이블에 새 행 추가 함수
