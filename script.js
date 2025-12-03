@@ -1478,9 +1478,25 @@ async function loadInCargoDataOnPageLoad() {
             
             console.log(`✅ 데이터 로드 완료: ${leafData.length}개 레코드`);
             
-            // 기본적으로 오늘 데이터만 표시
+            // 기본적으로 오늘 데이터만 표시 (오늘 버튼 활성화)
             setTimeout(() => {
-                filterByDatePeriod('today');
+                // 오늘 버튼을 찾아서 활성화 표시
+                document.querySelectorAll('.date-btn').forEach(btn => {
+                    btn.classList.remove('active');
+                    if (btn.textContent.trim() === '오늘') {
+                        btn.classList.add('active');
+                    }
+                });
+                
+                // 오늘 날짜로 필터링
+                const dateRange = getDateRange('today');
+                const filteredData = allInCargoData.filter(item => {
+                    const recordDate = item.data.date;
+                    return isDateInRange(recordDate, dateRange.start, dateRange.end);
+                });
+                
+                console.log(`📅 초기 로드: 오늘(${dateRange.start.toLocaleDateString()}) 데이터 ${filteredData.length}개 표시`);
+                displayFilteredData(filteredData, `오늘 (${dateRange.start.toLocaleDateString()})`);
             }, 100);
             
         } else {
@@ -1505,6 +1521,6 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('startDate').value = today;
     document.getElementById('endDate').value = today;
     
-    // Firebase에서 InCargo 데이터 자동 로드
+    // Firebase에서 InCargo 데이터 자동 로드 후 오늘 필터 적용
     loadInCargoDataOnPageLoad();
 });
