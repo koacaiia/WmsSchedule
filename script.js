@@ -1,0 +1,1510 @@
+// 화인통상 물류 컨테이너 관리 시스템 JavaScript
+
+// 테이블 검색 기능
+function searchTable() {
+    const input = document.getElementById('searchInput');
+    const filter = input.value.toUpperCase();
+    const table = document.getElementById('containerTable');
+    const rows = table.getElementsByTagName('tr');
+    
+    for (let i = 1; i < rows.length; i++) {
+        const row = rows[i];
+        const cells = row.getElementsByTagName('td');
+        let found = false;
+        
+        for (let j = 0; j < cells.length; j++) {
+            if (cells[j].textContent.toUpperCase().indexOf(filter) > -1) {
+                found = true;
+                break;
+            }
+        }
+        
+        row.style.display = found ? '' : 'none';
+    }
+}
+
+// 검색 초기화
+function clearSearch() {
+    document.getElementById('searchInput').value = '';
+    const table = document.getElementById('containerTable');
+    const rows = table.getElementsByTagName('tr');
+    
+    for (let i = 1; i < rows.length; i++) {
+        rows[i].style.display = '';
+    }
+}
+
+// Enter 키로 검색
+document.addEventListener('DOMContentLoaded', function() {
+    const searchInput = document.getElementById('searchInput');
+    if (searchInput) {
+        searchInput.addEventListener('keyup', function(event) {
+            if (event.key === 'Enter') {
+                searchTable();
+            }
+        });
+        
+        // 실시간 검색 (타이핑 시)
+        searchInput.addEventListener('input', function() {
+            searchTable();
+        });
+    }
+});
+
+// 테이블 정렬 기능
+function sortTable(columnIndex) {
+    const table = document.getElementById('containerTable');
+    const rows = Array.from(table.rows).slice(1);
+    const isNumeric = columnIndex === 0 || columnIndex === 5; // 순번, 중량 컬럼
+    
+    rows.sort((a, b) => {
+        const aVal = a.cells[columnIndex].textContent.trim();
+        const bVal = b.cells[columnIndex].textContent.trim();
+        
+        if (isNumeric) {
+            return parseFloat(aVal) - parseFloat(bVal);
+        } else {
+            return aVal.localeCompare(bVal);
+        }
+    });
+    
+    const tbody = table.querySelector('tbody');
+    tbody.innerHTML = '';
+    rows.forEach(row => tbody.appendChild(row));
+}
+
+// 신규입고 버튼 클릭 함수 (데이터 미리 채우기 지원)
+function addNewArrival(prefilledData = null) {
+    const modal = document.getElementById('newArrivalModal');
+    modal.style.display = 'block';
+    
+    // 미리 채울 데이터가 없는 경우에만 현재 날짜 설정
+    if (!prefilledData) {
+        // 현재 날짜를 반입일 기본값으로 설정
+        const today = new Date().toISOString().split('T')[0];
+        const importDateElement = document.getElementById('importDate');
+        if (importDateElement) {
+            importDateElement.value = today;
+        }
+    }
+}
+
+// 모달 닫기 함수
+function closeModal() {
+    const modal = document.getElementById('newArrivalModal');
+    modal.style.display = 'none';
+    
+    // 폼 초기화
+    const form = document.getElementById('newArrivalForm');
+    if (form) {
+        form.reset();
+    }
+}
+
+// 폼 데이터를 객체로 변환하는 함수
+function createContainerObject(formData) {
+    const year = formData.get('importDate').split('-')[0];
+    const month = formData.get('importDate').split('-')[1];
+    const day = formData.get('importDate').split('-')[2];
+    const date = year + '-' + (month.length === 1 ? '0' + month : month) + '-' + (day.length === 1 ? '0' + day : day);
+    console.log('Formatted date:', date);
+    
+    const containerObject = {
+        // 기본 정보
+        date: date,
+        consignee: formData.get('shipper'),
+        container: formData.get('container'),
+        count: formData.get('seal') || '',
+        bl: formData.get('bl'),
+        
+        // 화물 정보
+        description: formData.get('itemName'),
+        qtyEa: parseInt(formData.get('qtyEa')) || 0,
+        qtyPlt: parseInt(formData.get('qtyPlt')) || 0,
+        spec: formData.get('spec') || '',
+        shape: formData.get('shape') || '',
+        remark: formData.get('remark') || '',
+        
+        // 시스템 정보
+        working: "", // 입고대기
+        priority: 'normal',
+        registeredBy: 'system',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        refValue: "DeptName/WareHouseDept2/InCargo/" + formData.get('importDate') + "_" + formData.get('bl') + "_" + formData.get('itemName') + "_" + formData.get('seal') + "_" + formData.get('container')
+    };
+    
+    return containerObject;
+}
+
+// Realtime Database에 데이터 업로드 함수 (날짜 구조로만 업로드)
+async function uploadToRealtimeDatabase(containerObject) {
+    console.log('🚀 Firebase 업로드 시작');
+    console.log('업로드할 데이터:', containerObject);
+    
+    // Firebase 연결 상태 확인
+    if (!window.firebaseDb) {
+        console.error('❌ Firebase 데이터베이스가 초기화되지 않음');
+        return { success: false, error: 'Firebase 데이터베이스가 초기화되지 않음' };
+    }
+    
+    try {
+        // 날짜를 yyyy/mm/dd 형태로 변환
+        const dateStr = containerObject.date; // yyyy-mm-dd 형태
+        const datePath = dateStr.replace(/-/g, '/'); // yyyy/mm/dd 형태로 변환
+        
+        // 새로운 구조만 사용: /DeptName/WareHouseDept2/InCargo/yyyy/mm/dd/
+        const basePath = `DeptName/WareHouseDept2/InCargo/${datePath}`;
+        
+        console.log('📅 새로운 날짜 구조로 업로드:', basePath);
+        console.log('📍 날짜 경로:', datePath);
+        
+        // 해당 날짜 경로에서 기존 레코드 수 확인하여 새로운 키 생성
+        const dateRef = window.firebaseRef(window.firebaseDb, basePath);
+        console.log('🔍 날짜 참조 생성 완료:', dateRef);
+        
+        return new Promise((resolve, reject) => {
+            console.log('🔎 날짜 경로에서 기존 데이터 확인 중...');
+            
+            window.firebaseOnValue(dateRef, async (snapshot) => {
+                try {
+                    console.log('📊 스냅샷 수신:', snapshot.exists() ? '데이터 존재' : '데이터 없음');
+                    
+                    // 데이터 유효성 검사
+                    if (!containerObject.bl || !containerObject.description || !containerObject.count || !containerObject.container) {
+                        throw new Error(`신규 입고 데이터 필수 필드 누락: bl=${containerObject.bl}, description=${containerObject.description}, count=${containerObject.count}, container=${containerObject.container}`);
+                    }
+                    
+                    let newRecordKey;
+                    
+                    // 새로운 키 구조 생성: bl+""+description+""+count+"_"+container
+                    const bl = (containerObject.bl || 'NO_BL').replace(/[^a-zA-Z0-9]/g, '');
+                    const description = (containerObject.description || 'NO_DESC').replace(/[^a-zA-Z0-9\uAC00-\uD7A3]/g, '');
+                    const count = (containerObject.count || 'NO_COUNT').replace(/[^a-zA-Z0-9]/g, '');
+                    const container = (containerObject.container || 'NO_CONTAINER').replace(/[^a-zA-Z0-9]/g, '');
+                    
+                    newRecordKey = `${bl}${description}${count}_${container}`;
+                    console.log(`🔑 새로운 키 구조 생성 (bl+description+count_container): ${newRecordKey}`);
+                    
+                    // 중복 키 처리
+                    if (snapshot.exists()) {
+                        const existingRecords = snapshot.val();
+                        if (existingRecords[newRecordKey]) {
+                            // 중복되는 경우 시간 스탬프 추가
+                            const timestamp = Date.now().toString().slice(-6);
+                            newRecordKey = `${newRecordKey}_${timestamp}`;
+                            console.log(`⚠️ 중복 키 감지, 시간 스탬프 추가: ${newRecordKey}`);
+                        }
+                        console.log(`📝 기존 레코드 ${Object.keys(existingRecords).length}개 발견, 새 키: ${newRecordKey}`);
+                    } else {
+                        console.log('🆕 첫 번째 레코드, 키:', newRecordKey);
+                    }
+                    
+                    // 전체 경로 생성
+                    const fullPath = `${basePath}/${newRecordKey}`;
+                    console.log('📍 전체 저장 경로:', fullPath);
+                    
+                    const containerRef = window.firebaseRef(window.firebaseDb, fullPath);
+                    console.log('🔗 컨테이너 참조 생성 완료');
+                    
+                    // 새로운 구조용 데이터 객체 생성 (새로운 키 구조 적용)
+                    const dateStructuredObject = {
+                        // 기본 정보
+                        date: containerObject.date,
+                        consignee: containerObject.consignee,
+                        container: containerObject.container,
+                        count: containerObject.count || containerObject.seal || '',
+                        bl: containerObject.bl,
+                        
+                        // 화물 정보
+                        description: containerObject.description,
+                        qtyEa: containerObject.qtyEa || 0,
+                        qtyPlt: containerObject.qtyPlt || 0,
+                        spec: containerObject.spec || '',
+                        shape: containerObject.shape || '',
+                        remark: containerObject.remark || '',
+                        
+                        // 시스템 정보 (새로운 구조용)
+                        working: containerObject.working || "",
+                        priority: containerObject.priority || 'normal',
+                        registeredBy: containerObject.registeredBy || 'system',
+                        createdAt: containerObject.createdAt || new Date().toISOString(),
+                        updatedAt: new Date().toISOString(),
+                        
+                        // 새로운 구조 메타데이터
+                        recordKey: newRecordKey,
+                        datePath: datePath,
+                        structureVersion: '3.0', // 새로운 키 구조 버전
+                        keyStructure: 'bl+description+count_container',
+                        uploadedAt: new Date().toISOString()
+                    };
+                    
+                    // 데이터 업로드 시도
+                    console.log('🚀 Firebase 업로드 시도 중...');
+                    console.log('📍 업로드 경로:', fullPath);
+                    console.log('📦 업로드 데이터:', JSON.stringify(dateStructuredObject, null, 2));
+                    
+                    try {
+                        console.log('⏳ firebaseSet 함수 호출...');
+                        const result = await window.firebaseSet(containerRef, dateStructuredObject);
+                        console.log('✅ firebaseSet 완료, 결과:', result);
+                    } catch (uploadError) {
+                        console.error('❌ firebaseSet 오류:', uploadError);
+                        throw uploadError;
+                    }
+                    
+                    console.log('✅ Firebase 업로드 완료!');
+                    console.log('📍 저장 경로:', fullPath);
+                    
+                    // 업로드 후 즉시 검증
+                    console.log('🔍 업로드 검증 시작...');
+                    
+                    // 지연 후 검증 (데이터베이스 동기화 대기)
+                    setTimeout(() => {
+                        window.firebaseOnValue(containerRef, (verifySnapshot) => {
+                            if (verifySnapshot.exists()) {
+                                const savedData = verifySnapshot.val();
+                                console.log('✅ 업로드 검증 성공!');
+                                console.log('💾 저장된 데이터:', savedData);
+                                
+                                // InCargo 전체 경로도 확인
+                                const inCargoRef = window.firebaseRef(window.firebaseDb, 'DeptName/WareHouseDept2/InCargo');
+                                window.firebaseOnValue(inCargoRef, (inCargoSnapshot) => {
+                                    if (inCargoSnapshot.exists()) {
+                                        console.log('📋 InCargo 전체 구조 업데이트 확인됨');
+                                        console.log('📊 InCargo 현재 데이터:', inCargoSnapshot.val());
+                                    }
+                                }, { onlyOnce: true });
+                                
+                            } else {
+                                console.error('❌ 업로드 검증 실패: 데이터가 저장되지 않음');
+                                console.error('🚨 문제 경로:', fullPath);
+                            }
+                        }, { onlyOnce: true });
+                    }, 2000); // 2초 후 검증
+                    
+                    resolve({ 
+                        success: true, 
+                        id: fullPath,
+                        recordKey: newRecordKey,
+                        datePath: datePath,
+                        structureType: 'dateStructured'
+                    });
+                    
+                } catch (error) {
+                    console.error('❌ 업로드 처리 오류:', error);
+                    console.error('오류 세부 정보:', {
+                        name: error.name,
+                        message: error.message,
+                        code: error.code,
+                        stack: error.stack
+                    });
+                    reject({ success: false, error: error.message });
+                }
+            }, { onlyOnce: true });
+        });
+        
+    } catch (error) {
+        console.error('❌ 데이터 업로드 전체 오류:', error);
+        console.error('오류 세부 정보:', {
+            name: error.name,
+            message: error.message,
+            code: error.code,
+            stack: error.stack
+        });
+        return { success: false, error: error.message };
+    }
+}
+
+// 중복 컨테이너 번호 체크 함수
+function checkDuplicateContainer(containerNumber) {
+    return new Promise((resolve) => {
+        const containersRef = window.firebaseRef(window.firebaseDb, 'containers');
+        
+        window.firebaseOnValue(containersRef, (snapshot) => {
+            let exists = false;
+            
+            if (snapshot.exists()) {
+                const containers = snapshot.val();
+                
+                // 모든 컨테이너를 체크하여 중복 번호 확인
+                Object.values(containers).forEach(container => {
+                    if (container.containerNumber === containerNumber) {
+                        exists = true;
+                    }
+                });
+            }
+            
+            resolve(exists);
+        }, { onlyOnce: true }); // 단일 읽기로 설정
+    });
+}
+
+// 신규입고 등록 함수
+async function submitNewArrival() {
+    const form = document.getElementById('newArrivalForm');
+    const formData = new FormData(form);
+    
+    // 필수 필드 검증
+    const requiredFields = ['importDate', 'shipper', 'container', 'bl', 'itemName'];
+    let isValid = true;
+    
+    requiredFields.forEach(field => {
+        const input = document.getElementById(field);
+        if (!input.value.trim()) {
+            input.style.borderColor = '#dc3545';
+            isValid = false;
+        } else {
+            input.style.borderColor = '#ddd';
+        }
+    });
+    
+    if (!isValid) {
+        alert('필수 항목을 모두 입력해주세요.');
+        return;
+    }
+    
+    // 중복 컨테이너 번호 체크
+    const containerNumber = formData.get('container');
+    const isDuplicate = await checkDuplicateContainer(containerNumber);
+    
+    if (isDuplicate) {
+        alert('이미 등록된 컨테이너 번호입니다.');
+        document.getElementById('container').style.borderColor = '#dc3545';
+        return;
+    }
+    
+    // 폼 데이터를 객체로 변환
+    const containerObject = createContainerObject(formData);
+    
+    // 생성된 객체를 콘솔에 출력하여 확인
+    console.log('생성된 컨테이너 객체:', containerObject);
+    
+    // Realtime Database에 업로드 시도
+    const uploadResult = await uploadToRealtimeDatabase(containerObject);
+    
+    if (uploadResult.success) {
+        const successMessage = `신규입고가 성공적으로 등록되었습니다!
+
+📍 저장 위치: ${uploadResult.datePath}
+🔑 레코드 키: ${uploadResult.recordKey}
+🏗️ 키 구조: bl+description+count_container
+📊 구조 타입: 새로운 날짜 구조 v3.0
+🆔 전체 경로: ${uploadResult.id}
+
+✨ 특징:
+- 2024년 이후 데이터만 저장
+- 새로운 키 명명 규칙 적용
+- 기존 데이터와 별도 관리`;
+        
+        alert(successMessage);
+        
+        // 테이블에 새 행 추가
+        addRowToTable(formData, uploadResult.id);
+        
+        // 요약 카드 업데이트
+        updateSummaryCards();
+        
+        // 모달 닫기
+        closeModal();
+        
+    } else {
+        alert(`데이터 업로드 실패: ${uploadResult.error}`);
+    }
+}
+
+// 테이블에 새 행 추가 함수
+function addRowToTable(formData, containerId) {
+    const table = document.getElementById('containerTable');
+    const tableBody = table ? table.getElementsByTagName('tbody')[0] : null;
+    if (!tableBody) return;
+    
+    const newRow = tableBody.insertRow(0);
+    const rowCount = tableBody.rows.length;
+    
+    newRow.innerHTML = `
+        <td>${rowCount}</td>
+        <td>${formData.get('importDate')}</td>
+        <td><strong>${formData.get('container')}</strong></td>
+        <td>${formData.get('shipper') || '-'}</td>
+        <td>${formData.get('itemName')}</td>
+        <td>${formData.get('qtyPlt') || '-'}</td>
+        <td>${formData.get('spec') || '-'}</td>
+        <td>${formData.get('shape') || '-'}</td>
+        <td><span class="status-pending">입고대기</span></td>
+        <td class="priority-normal">보통</td>
+        <td>시스템</td>
+        <td>${formData.get('remark') || '-'}</td>
+    `;
+    
+    // 데이터 ID 속성 추가
+    if (containerId) {
+        newRow.setAttribute('data-container-id', containerId);
+    }
+}
+
+// 요약 카드 업데이트 함수
+function updateSummaryCards() {
+    const totalCard = document.querySelector('.summary-card .number');
+    if (totalCard) {
+        const currentTotal = parseInt(totalCard.textContent) || 0;
+        totalCard.textContent = currentTotal + 1;
+    }
+}
+
+// 모달 외부 클릭 시 닫기
+window.onclick = function(event) {
+    const modal = document.getElementById('newArrivalModal');
+    if (event.target === modal) {
+        closeModal();
+    }
+}
+
+// 테이블 행에서 데이터 추출 함수
+function extractRowData(row) {
+    const cells = row.getElementsByTagName('td');
+    if (cells.length < 11) return null;
+    
+    // 현재 테이블 구조: 순번, 입항일, 컨테이너번호, 선박명, 화물종류, 중량, 출발지, 목적지, 상태, 우선순위, 담당자, 특이사항
+    return {
+        importDate: cells[1].textContent.trim(),
+        container: cells[2].textContent.replace(/<[^>]*>/g, '').trim(), // HTML 태그 제거
+        shipper: "Test", // 선박명을 화주명으로 매핑
+        itemName: cells[5].textContent.trim(), // 화물종류를 품명으로 매핑
+        seal: cells[3].textContent.trim(), // 테이블에 SEAL 정보가 없으므로 빈값
+        bl: cells[4].textContent.trim(), // 테이블에 BL 정보가 없으므로 빈값
+        qtyEa: cells[6].textContent.trim(), // 테이블에 EA 수량 정보가 없으므로 빈값
+        qtyPlt: cells[7].textContent.trim(), // 중량을 PLT로 임시 매핑
+        spec: cells[8].textContent.trim(), // 테이블에 규격 정보가 없으므로 빈값
+        shape: cells[9].textContent.trim(), // 테이블에 형태 정보가 없으므로 빈값
+        remark: cells.length > 10 ? cells[10].textContent.trim() : '' // 특이사항
+    };
+}
+
+// 모달 폼에 데이터 채우기 함수
+function populateModalWithData(data) {
+    if (!data) return;
+    
+    // 각 필드에 데이터 설정 (빈값이나 '-'는 공백으로 처리)
+    const setValue = (id, value) => {
+        const element = document.getElementById(id);
+        if (element) {
+            element.value = (value === '-' || !value) ? '' : value;
+        }
+    };
+    
+    setValue('importDate', data.importDate);
+    setValue('shipper', data.shipper); // 선박명을 화주명 필드에
+    setValue('container', data.container);
+    setValue('seal', data.seal);
+    setValue('bl', data.bl);
+    setValue('itemName', data.itemName);
+    setValue('qtyEa', data.qtyEa);
+    setValue('qtyPlt', data.qtyPlt);
+    setValue('remark', data.remark);
+    
+    // Select 요소들은 빈값으로 초기화
+    const specSelect = document.getElementById('spec');
+    const shapeSelect = document.getElementById('shape');
+    
+    if (specSelect) specSelect.value = '';
+    if (shapeSelect) shapeSelect.value = '';
+    
+    console.log('모달에 데이터가 채워졌습니다:', data);
+}
+
+// 테이블 행 클릭 이벤트 리스너 추가
+function addTableRowClickListeners() {
+    const tableBody = document.querySelector('#containerTable tbody');
+    if (tableBody) {
+        tableBody.addEventListener('click', function(event) {
+            // 클릭된 요소가 tbody 내의 tr인지 확인
+            const clickedRow = event.target.closest('tr');
+            if (clickedRow && clickedRow.parentNode === tableBody) {
+                console.log('테이블 행이 클릭되었습니다:', clickedRow);
+                
+                // 행 데이터 추출
+                const rowData = extractRowData(clickedRow);
+                
+                // 모달 열기
+                addNewArrival();
+                
+                // 데이터 채우기 (모달이 열린 후 약간의 지연)
+                setTimeout(() => {
+                    populateModalWithData(rowData);
+                }, 100);
+            }
+        });
+    }
+}
+
+// 데이터베이스에서 기존 데이터 깊이 분석 함수 (최하위 노드까지)
+async function analyzeExistingData() {
+    try {
+        const inCargoRef = window.firebaseRef(window.firebaseDb, 'DeptName/WareHouseDept2/InCargo');
+        
+        return new Promise((resolve) => {
+            window.firebaseOnValue(inCargoRef, (snapshot) => {
+                const analysisResult = {
+                    totalRecords: 0,
+                    dateGroups: {},
+                    dataStructure: [],
+                    duplicateKeys: [],
+                    deepAnalysis: {
+                        maxDepth: 0,
+                        leafNodes: [],
+                        structureMap: {}
+                    }
+                };
+                
+                console.log('🔍 데이터베이스 전체 구조 분석 시작...');
+                
+                if (snapshot.exists()) {
+                    const data = snapshot.val();
+                    console.log('📊 전체 데이터 구조:', data);
+                    
+                    // 깊이 우선 탐색으로 최하위 노드 찾기
+                    function analyzeDepth(obj, path = '', depth = 0) {
+                        if (obj === null || obj === undefined) return;
+                        
+                        analysisResult.deepAnalysis.maxDepth = Math.max(analysisResult.deepAnalysis.maxDepth, depth);
+                        
+                        if (typeof obj === 'object' && !Array.isArray(obj)) {
+                            const keys = Object.keys(obj);
+                            
+                            // 모든 키를 검사해서 leaf node인지 확인
+                            let hasChildObjects = false;
+                            
+                            keys.forEach(key => {
+                                const currentPath = path ? `${path}/${key}` : key;
+                                const value = obj[key];
+                                
+                                if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+                                    // 하위에 객체가 있는지 확인
+                                    const hasNestedObjects = Object.values(value).some(v => 
+                                        typeof v === 'object' && v !== null && !Array.isArray(v)
+                                    );
+                                    
+                                    if (hasNestedObjects) {
+                                        hasChildObjects = true;
+                                        analyzeDepth(value, currentPath, depth + 1);
+                                    } else {
+                                        // 이것이 실제 데이터 레코드 (leaf node)
+                                        console.log(`🍃 실제 데이터 발견: ${currentPath}`, value);
+                                        analysisResult.deepAnalysis.leafNodes.push({
+                                            path: currentPath,
+                                            depth: depth + 1,
+                                            data: value
+                                        });
+                                        
+                                        // 데이터 구조 분석
+                                        analysisResult.dataStructure.push({
+                                            originalKey: currentPath,
+                                            originalKeyShort: key,
+                                            date: value.date,
+                                            container: value.container,
+                                            consignee: value.consignee,
+                                            fullData: value,
+                                            hasValidDate: value.date && /^\d{4}-\d{2}-\d{2}$/.test(value.date)
+                                        });
+                                        
+                                        // date 기준으로 그룹화
+                                        if (value.date && /^\d{4}-\d{2}-\d{2}$/.test(value.date)) {
+                                            const dateKey = value.date.replace(/-/g, '/');
+                                            if (!analysisResult.dateGroups[dateKey]) {
+                                                analysisResult.dateGroups[dateKey] = [];
+                                            }
+                                            analysisResult.dateGroups[dateKey].push({
+                                                originalPath: currentPath,
+                                                originalKey: key,
+                                                data: value
+                                            });
+                                        }
+                                        
+                                        analysisResult.totalRecords++;
+                                    }
+                                }
+                            });
+                            
+                            // 구조 맵 저장
+                            analysisResult.deepAnalysis.structureMap[path || 'root'] = {
+                                keys: keys,
+                                depth: depth,
+                                hasChildObjects: hasChildObjects
+                            };
+                        }
+                    }
+                    
+                    analyzeDepth(data);
+                    
+                    console.log('📈 분석 완료:');
+                    console.log(`- 최대 깊이: ${analysisResult.deepAnalysis.maxDepth}`);
+                    console.log(`- 실제 데이터 레코드: ${analysisResult.deepAnalysis.leafNodes.length}개`);
+                    console.log(`- 날짜별 그룹: ${Object.keys(analysisResult.dateGroups).length}개`);
+                    console.log('- 발견된 실제 데이터:', analysisResult.deepAnalysis.leafNodes);
+                }
+                
+                console.log('📊 최종 분석 결과:', analysisResult);
+                resolve(analysisResult);
+            }, { onlyOnce: true });
+        });
+        
+    } catch (error) {
+        console.error('데이터 분석 오류:', error);
+        throw error;
+    }
+}
+
+// InCargo 경로 직접 확인 함수
+window.checkInCargoPath = async function() {
+    try {
+        console.log('📍 InCargo 경로 확인 시작...');
+        
+        const inCargoRef = window.firebaseRef(window.firebaseDb, 'DeptName/WareHouseDept2/InCargo');
+        
+        window.firebaseOnValue(inCargoRef, (snapshot) => {
+            if (snapshot.exists()) {
+                const data = snapshot.val();
+                const keys = Object.keys(data);
+                
+                console.log('📋 InCargo 경로 데이터 발견:', {
+                    totalKeys: keys.length,
+                    keys: keys.slice(0, 10), // 첫 10개만 표시
+                    sampleData: keys.length > 0 ? data[keys[0]] : null
+                });
+                
+                let message = `InCargo 경로 데이터 확인 결과:
+
+📊 총 ${keys.length}개의 키 발견
+
+🔑 첫 10개 키:
+${keys.slice(0, 10).map((key, i) => `${i+1}. ${key}`).join('\n')}
+
+${keys.length > 10 ? `... 및 ${keys.length - 10}개 더` : ''}`;
+                
+                // 날짜 구조 키 찾기
+                const dateKeys = keys.filter(key => key.match(/^\d{4}\/\d{2}\/\d{2}$/));
+                if (dateKeys.length > 0) {
+                    message += `
+
+📅 날짜 구조 키: ${dateKeys.length}개
+${dateKeys.slice(0, 5).join('\n')}`;
+                }
+                
+                // 새로운 키 구조 찾기
+                const newStructureKeys = keys.filter(key => key.includes('_'));
+                if (newStructureKeys.length > 0) {
+                    message += `
+
+🔧 새로운 키 구조: ${newStructureKeys.length}개
+${newStructureKeys.slice(0, 3).join('\n')}`;
+                }
+                
+                alert(message);
+                
+            } else {
+                console.log('⚠️ InCargo 경로에 데이터 없음');
+                alert('InCargo 경로에 데이터가 없습니다.\n\n경로: /DeptName/WareHouseDept2/InCargo\n\n신규입고를 등록하거나 DB 재구성을 실행해보세요.');
+            }
+        }, { onlyOnce: true });
+        
+    } catch (error) {
+        console.error('❌ InCargo 경로 확인 실패:', error);
+        alert(`InCargo 경로 확인 오류: ${error.message}`);
+    }
+};
+
+// 오류 발생 키 비동기 삭제 함수
+async function deleteErrorKeyAsync(keyPath) {
+    try {
+        console.log(`🗑️ 오류 키 비동기 삭제 시도: ${keyPath}`);
+        
+        const errorRef = window.firebaseRef(window.firebaseDb, keyPath);
+        await window.firebaseSet(errorRef, null);
+        
+        console.log(`✅ 오류 키 삭제 성공: ${keyPath}`);
+    } catch (error) {
+        console.error(`❌ 오류 키 삭제 실패: ${keyPath}`, error.message);
+    }
+}
+
+// 기존 데이터는 유지하고 새로운 날짜 구조로 복사하는 함수
+async function copyToDateStructure(analysisResult) {
+    try {
+        const inCargoRef = window.firebaseRef(window.firebaseDb, 'DeptName/WareHouseDept2/InCargo');
+        const migrationLog = [];
+        
+        // 기존 데이터 읽기
+        const originalDataSnapshot = await new Promise(resolve => {
+            window.firebaseOnValue(inCargoRef, resolve, { onlyOnce: true });
+        });
+        
+        if (!originalDataSnapshot.exists()) {
+            throw new Error('기존 데이터가 없습니다.');
+        }
+        
+        const originalData = originalDataSnapshot.val();
+        
+        // 새로운 날짜 구조 생성 (기존 데이터와 병합)
+        const dateStructuredData = {};
+        
+        // 기존 데이터가 이미 날짜 구조인지 확인
+        const hasDateStructure = Object.keys(originalData).some(key => 
+            key.match(/^\d{4}\/\d{2}\/\d{2}$/) // yyyy/mm/dd 패턴
+        );
+        
+        if (!hasDateStructure) {
+            // 2024년 이후 데이터만 필터링하여 새로운 구조로 복사
+            console.log('🔄 2024년 이후 데이터만 새로운 날짜 구조로 복사 시작...');
+            
+            // 2024년 이후 데이터만 필터링
+            const filteredDateGroups = {};
+            Object.entries(analysisResult.dateGroups).forEach(([dateKey, recordInfos]) => {
+                // 날짜를 Date 객체로 변환하여 비교
+                const dateObj = new Date(dateKey.replace(/\//g, '-'));
+                const year2025 = new Date('2025-01-01');
+                
+                if (dateObj >= year2025) {
+                    filteredDateGroups[dateKey] = recordInfos;
+                    console.log(`✅ 날짜 ${dateKey}: 2024년 이후 데이터로 포함 (${recordInfos.length}개 레코드)`);
+                } else {
+                    console.log(`❌ 날짜 ${dateKey}: 2024년 이전 데이터로 제외 (${recordInfos.length}개 레코드)`);
+                }
+            });
+            
+            console.log(`📊 필터링 결과: ${Object.keys(filteredDateGroups).length}개 날짜 그룹이 2024년 이후 데이터로 확인됨`);
+            
+            Object.entries(filteredDateGroups).forEach(([dateKey, recordInfos]) => {
+                try {
+                    const datePath = dateKey; // yyyy/mm/dd 형태
+                    dateStructuredData[datePath] = {};
+                    
+                    console.log(`📅 날짜 ${dateKey}에 대한 ${recordInfos.length}개 레코드 처리 시작...`);
+                    
+                    let successCount = 0;
+                    let errorCount = 0;
+                    const errorKeys = [];
+                
+                recordInfos.forEach((recordInfo, index) => {
+                    try {
+                        const originalRecord = recordInfo.data;
+                        const originalPath = recordInfo.originalPath;
+                        
+                        if (!originalRecord || typeof originalRecord !== 'object') {
+                            throw new Error(`잘못된 데이터 형식: ${originalPath}`);
+                        }
+                        
+                        // 새로운 키 생성: bl+description+count_container
+                        const bl = (originalRecord.bl || 'NO_BL').replace(/[^a-zA-Z0-9]/g, '');
+                        const description = (originalRecord.description || originalRecord.itemName || 'NO_DESC').replace(/[^a-zA-Z0-9\uAC00-\uD7A3]/g, '');
+                        const count = (originalRecord.count || originalRecord.seal || 'NO_COUNT').replace(/[^a-zA-Z0-9]/g, '');
+                        const container = (originalRecord.container || 'NO_CONTAINER').replace(/[^a-zA-Z0-9]/g, '');
+                        
+                        // 키 유효성 검사
+                        if (!bl || !description || !count || !container) {
+                            throw new Error(`필수 필드 누락: bl=${bl}, description=${description}, count=${count}, container=${container}`);
+                        }
+                        
+                        const newKey = `${bl}${description}${count}_${container}`;
+                        console.log(`🔑 새로운 키 생성: ${newKey}`);
+                        
+                        // 데이터 정규화 (필드명 통일)
+                        const normalizedData = {
+                            // 기본 정보
+                            date: originalRecord.date,
+                            consignee: originalRecord.consignee || originalRecord.shipper || '',
+                            container: originalRecord.container,
+                            count: originalRecord.count || originalRecord.seal || '',
+                            bl: originalRecord.bl,
+                            
+                            // 화물 정보
+                            description: originalRecord.description || originalRecord.itemName || '',
+                            qtyEa: originalRecord.qtyEa || 0,
+                            qtyPlt: originalRecord.qtyPlt || 0,
+                            spec: originalRecord.spec || '',
+                            shape: originalRecord.shape || '',
+                            remark: originalRecord.remark || '',
+                            
+                            // 시스템 정보
+                            working: originalRecord.working || "",
+                            priority: originalRecord.priority || 'normal',
+                            registeredBy: originalRecord.registeredBy || 'migrated',
+                            createdAt: originalRecord.createdAt || new Date().toISOString(),
+                            updatedAt: new Date().toISOString(),
+                            
+                            // 마이그레이션 정보
+                            copiedFrom: originalPath,
+                            copiedFromKey: recordInfo.originalKey,
+                            copiedAt: new Date().toISOString(),
+                            structureVersion: '3.0', // 새로운 키 구조 버전
+                            keyStructure: 'bl+description+count_container',
+                            originalData: originalRecord // 원본 데이터 보존
+                        };
+                        
+                        dateStructuredData[datePath][newKey] = normalizedData;
+                        
+                        migrationLog.push({
+                            action: 'copied_filtered',
+                            from: originalPath,
+                            fromKey: recordInfo.originalKey,
+                            to: `${datePath}/${newKey}`,
+                            date: originalRecord.date,
+                            recordCount: index + 1,
+                            keyStructure: newKey,
+                            status: 'success'
+                        });
+                        
+                        successCount++;
+                        console.log(`✅ 레코드 복사 완료: ${originalPath} → ${datePath}/${newKey}`);
+                        
+                    } catch (error) {
+                        errorCount++;
+                        const errorKey = recordInfo.originalPath || `unknown_${index}`;
+                        errorKeys.push({
+                            key: errorKey,
+                            error: error.message,
+                            data: recordInfo.data
+                        });
+                        
+                        console.warn(`⚠️ 레코드 처리 오류 (무시하고 계속): ${errorKey}`, error.message);
+                        
+                        // 오류 로그 추가 (비항 정보)
+                        migrationLog.push({
+                            action: 'error_skipped_continue',
+                            from: recordInfo.originalPath || 'unknown',
+                            fromKey: recordInfo.originalKey || 'unknown',
+                            error: error.message,
+                            date: recordInfo.data?.date || 'unknown',
+                            recordCount: index + 1,
+                            status: 'warning_continue'
+                        });
+                        
+                        // 오류 발생 키 삭제를 안전하게 시도 (비동기)
+                        try {
+                            deleteErrorKeyAsync(errorKey);
+                        } catch (deleteError) {
+                            console.warn(`키 삭제 실패 (무시): ${errorKey}`, deleteError.message);
+                        }
+                        
+                        // 오류 무시하고 계속 진행
+                        console.log(`⏩ 오류 무시 - 다음 레코드 처리 계속... (${index + 1}/${recordInfos.length})`);
+                    }
+                });
+                
+                    console.log(`✅ 날짜 ${dateKey} 처리 완료: 성공 ${successCount}개, 오류 ${errorCount}개 (${recordInfos.length}개 중)`);
+                    
+                } catch (dateGroupError) {
+                    console.error(`❌ 날짜 ${dateKey} 그룹 처리 오류 (무시하고 계속):`, dateGroupError.message);
+                    
+                    // 날짜 그룹 오류 로그
+                    migrationLog.push({
+                        action: 'dategroup_error_skipped',
+                        dateGroup: dateKey,
+                        error: dateGroupError.message,
+                        recordCount: recordInfos?.length || 0,
+                        status: 'error_continue'
+                    });
+                    
+                    console.log(`⏩ 날짜 ${dateKey} 그룹 오류 무시 - 다음 날짜 그룹 처리 계속...`);
+                }
+            });
+            
+            // 기존 데이터와 새 구조 병합 (기존 데이터 유지)
+            const mergedData = {
+                ...originalData, // 기존 데이터 유지
+                ...dateStructuredData // 새로운 날짜 구조 추가
+            };
+            
+            // 병합된 데이터로 업데이트
+            await window.firebaseSet(inCargoRef, mergedData);
+            
+            console.log('기존 데이터 유지하며 날짜 구조 추가 완료:', migrationLog);
+            return { success: true, log: migrationLog, newStructure: dateStructuredData, preserved: true };
+            
+        } else {
+            console.log('이미 날짜 구조가 존재합니다.');
+            return { success: true, log: [], newStructure: originalData, preserved: true, alreadyStructured: true };
+        }
+        
+    } catch (error) {
+        console.error('⚠️ 복사 작업 중 오류 발생 (부분 완료 가능):', error);
+        
+        // 부분 성공이라도 결과 반환
+        return { 
+            success: false, 
+            partialSuccess: true,
+            error: error.message,
+            log: migrationLog || [], 
+            newStructure: dateStructuredData || {}, 
+            preserved: true 
+        };
+    }
+}
+
+// 데이터베이스 분석 및 날짜 구조 추가 메인 함수
+async function analyzeAndRestructureDatabase() {
+    if (!confirm('기존 데이터는 유지하고 date 키 값 기준으로 "yyyy/mm/dd/" 구조를 추가하시겠습니까?\n\n기존 데이터는 그대로 유지되며 새로운 날짜별 구조가 추가됩니다.')) {
+        return;
+    }
+    
+    try {
+        // 진행 상황 표시
+        const progressDiv = document.createElement('div');
+        progressDiv.id = 'migrationProgress';
+        progressDiv.innerHTML = `
+            <div style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); 
+                        background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+                        z-index: 2000; text-align: center;">
+                <h3>날짜 구조 추가 중...</h3>
+                <p id="progressText">분석 시작 중...</p>
+                <div style="width: 300px; height: 20px; background: #f0f0f0; border-radius: 10px; overflow: hidden;">
+                    <div id="progressBar" style="height: 100%; background: #007bff; width: 0%; transition: width 0.3s;"></div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(progressDiv);
+        
+        // 1단계: 데이터 분석
+        document.getElementById('progressText').textContent = '기존 데이터 분석 중...';
+        document.getElementById('progressBar').style.width = '20%';
+        
+        const analysisResult = await analyzeExistingData();
+        
+        document.getElementById('progressText').textContent = `${analysisResult.totalRecords}개 레코드 발견. 날짜 구조 추가 중...`;
+        document.getElementById('progressBar').style.width = '50%';
+        
+        // 2단계: 날짜 구조 복사 (오류 무시하고 진행)
+        let copyResult;
+        try {
+            copyResult = await copyToDateStructure(analysisResult);
+        } catch (copyError) {
+            console.warn('⚠️ 복사 작업 중 오류 발생했지만 계속 진행:', copyError.message);
+            copyResult = { 
+                success: false, 
+                partialSuccess: true, 
+                error: copyError.message, 
+                log: [], 
+                preserved: true 
+            };
+        }
+        
+        document.getElementById('progressText').textContent = copyResult.success ? '날짜 구조 추가 완료!' : '날짜 구조 부분 완료!';
+        document.getElementById('progressBar').style.width = '80%';
+        
+        // 3단계: 결과 출력
+        document.getElementById('progressText').textContent = '완료!';
+        document.getElementById('progressBar').style.width = '100%';
+        
+        setTimeout(() => {
+            document.body.removeChild(progressDiv);
+            
+            let resultMessage;
+            
+            if (copyResult.alreadyStructured) {
+                resultMessage = `
+이미 날짜 구조가 존재합니다!
+
+📊 현재 상태:
+- 총 레코드 수: ${analysisResult.totalRecords}
+- 날짜별 그룹 수: ${Object.keys(analysisResult.dateGroups).length}
+- 상태: 이미 구조화됨
+
+기존 데이터와 날짜 구조가 모두 유지되고 있습니다.
+                `;
+            } else {
+                const successfulCopies = copyResult.log.filter(log => log.status === 'success').length;
+                const errorCopies = copyResult.log.filter(log => log.status === 'error' || log.status === 'error_continue' || log.status === 'warning_continue').length;
+                const totalAttempted = copyResult.log.length;
+                
+                const statusText = copyResult.success ? '완료되었습니다!' : 
+                                 copyResult.partialSuccess ? '부분 완료되었습니다! (오류 무시하고 계속 진행)' : 
+                                 '오류가 발생했지만 가능한 부분은 처리되었습니다!';
+                    
+                resultMessage = `
+날짜 구조 추가가 ${statusText}
+
+📊 분석 결과:
+- 전체 레코드 수: ${analysisResult.totalRecords}
+- 처리 시도: ${totalAttempted}개 레코드
+- 날짜별 그룹 수: ${Object.keys(analysisResult.dateGroups).length}
+
+✅ 복사 결과:
+- 성공: ${successfulCopies}개 레코드
+- 오류/삭제: ${errorCopies}개 레코드
+- 기존 데이터: 완전히 보존됨
+- 2024년 이전 데이터: 제외됨
+- 새로운 구조: /DeptName/WareHouseDept2/InCargo/yyyy/mm/dd/
+- 새로운 키 구조: bl+description+count_container
+- 버전: 3.0 (필터링 + 새 키 구조 + 오류 처리)
+
+${errorCopies > 0 ? `⚠️ ${errorCopies}개의 문제 데이터가 발생했지만 무시하고 계속 진행되었습니다.` : ''}
+${copyResult.error ? `🔧 처리 중 오류: ${copyResult.error}` : ''}
+
+새로운 데이터를 확인하려면 'DB 로드' 버튼을 클릭하세요.
+                `;
+            }
+            
+            alert(resultMessage);
+        }, 1000);
+        
+    } catch (error) {
+        console.error('재구성 프로세스 오류:', error);
+        
+        // 진행상황 표시 제거
+        const progressDiv = document.getElementById('migrationProgress');
+        if (progressDiv) {
+            document.body.removeChild(progressDiv);
+        }
+        
+        alert(`날짜 구조 추가 중 오류가 발생했습니다:\n${error.message}`);
+    }
+}
+
+// 재구성된 데이터베이스에서 데이터 로드 함수 (깊이 분석 적용)
+async function loadDataFromDatabase() {
+    try {
+        const inCargoRef = window.firebaseRef(window.firebaseDb, 'DeptName/WareHouseDept2/InCargo');
+        
+        console.log('📥 데이터베이스에서 데이터 로드 시작...');
+        
+        window.firebaseOnValue(inCargoRef, (snapshot) => {
+            if (snapshot.exists()) {
+                const data = snapshot.val();
+                console.log('📊 로드된 데이터베이스 구조:', data);
+                
+                // 테이블 초기화
+                const tableBody = document.querySelector('#containerTable tbody');
+                if (tableBody) {
+                    tableBody.innerHTML = '';
+                }
+                
+                let rowIndex = 1;
+                let loadedRecords = [];
+                
+                // 깊이 우선 탐색으로 실제 데이터 찾기
+                function findDataRecords(obj, path = '') {
+                    if (obj === null || obj === undefined) return;
+                    
+                    if (typeof obj === 'object' && !Array.isArray(obj)) {
+                        const keys = Object.keys(obj);
+                        
+                        keys.forEach(key => {
+                            const currentPath = path ? `${path}/${key}` : key;
+                            const value = obj[key];
+                            
+                            if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+                                // 이것이 실제 데이터 레코드인지 확인
+                                const hasNestedObjects = Object.values(value).some(v => 
+                                    typeof v === 'object' && v !== null && !Array.isArray(v)
+                                );
+                                
+                                if (!hasNestedObjects && (value.date || value.container)) {
+                                    // 실제 데이터 레코드 발견
+                                    console.log(`🎯 실제 데이터 레코드 발견: ${currentPath}`, value);
+                                    
+                                    loadedRecords.push({
+                                        path: currentPath,
+                                        key: key,
+                                        data: value,
+                                        // 날짜 추출 (경로에서 또는 데이터에서)
+                                        sortDate: value.date || 
+                                            (currentPath.match(/(\d{4}\/\d{2}\/\d{2})/) && 
+                                             currentPath.match(/(\d{4}\/\d{2}\/\d{2})/)[1].replace(/\//g, '-')) ||
+                                            '1900-01-01'
+                                    });
+                                } else {
+                                    // 더 깊이 탐색
+                                    findDataRecords(value, currentPath);
+                                }
+                            }
+                        });
+                    }
+                }
+                
+                findDataRecords(data);
+                
+                // 날짜순으로 정렬
+                loadedRecords.sort((a, b) => a.sortDate.localeCompare(b.sortDate));
+                
+                console.log(`📋 발견된 레코드 ${loadedRecords.length}개를 날짜순으로 정렬하여 표시`);
+                
+                // 테이블에 추가
+                if (tableBody) {
+                    loadedRecords.forEach(recordInfo => {
+                        const record = recordInfo.data;
+                        const newRow = tableBody.insertRow();
+                        
+                        newRow.innerHTML = `
+                            <td>${rowIndex}</td>
+                            <td>${record.date || recordInfo.sortDate}</td>
+                            <td><strong>${record.container || '-'}</strong></td>
+                            <td>${record.count || record.seal || '-'}</td>
+                            <td>${record.bl || '-'}</td>
+                            <td>${record.description || record.itemName || '-'}</td>
+                            <td>${record.qtyEa || '-'}</td>
+                            <td>${record.qtyPlt || '-'}</td>
+                            <td>${record.spec || '-'}</td>
+                            <td>${record.shape || '-'}</td>
+                            <td>${record.remark || '-'}</td>
+                        `;
+                        
+                        // 데이터 속성 추가
+                        newRow.setAttribute('data-record-path', recordInfo.path);
+                        newRow.setAttribute('data-record-key', recordInfo.key);
+                        
+                        rowIndex++;
+                    });
+                }
+                
+                const message = `데이터베이스에서 ${loadedRecords.length}개의 레코드를 로드했습니다.
+
+📊 로드 상세:
+- 실제 데이터 레코드: ${loadedRecords.length}개
+- 날짜 범위: ${loadedRecords.length > 0 ? loadedRecords[0].sortDate + ' ~ ' + loadedRecords[loadedRecords.length - 1].sortDate : 'N/A'}
+- 구조: 깊이 분석으로 최하위 노드까지 탐색`;
+                
+                alert(message);
+                console.log('✅ 데이터 로드 완료:', loadedRecords);
+                
+            } else {
+                console.log('❌ 데이터베이스에 데이터가 없습니다.');
+                alert('데이터베이스에 로드할 데이터가 없습니다.');
+            }
+        }, { onlyOnce: true });
+        
+    } catch (error) {
+        console.error('❌ 데이터 로드 오류:', error);
+        alert(`데이터 로드 중 오류가 발생했습니다: ${error.message}`);
+    }
+}
+
+// 전역 변수로 모든 데이터 저장
+let allInCargoData = [];
+
+// 날짜 범위 계산 함수
+function getDateRange(period) {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    
+    switch (period) {
+        case 'today':
+            return {
+                start: new Date(today),
+                end: new Date(today.getTime() + 24 * 60 * 60 * 1000 - 1)
+            };
+            
+        case 'tomorrow':
+            const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
+            return {
+                start: tomorrow,
+                end: new Date(tomorrow.getTime() + 24 * 60 * 60 * 1000 - 1)
+            };
+            
+        case 'thisWeek':
+            const startOfWeek = new Date(today);
+            const dayOfWeek = startOfWeek.getDay(); // 0: 일요일, 1: 월요일, ...
+            const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek; // 월요일을 주의 시작으로
+            startOfWeek.setDate(startOfWeek.getDate() + mondayOffset);
+            
+            const endOfWeek = new Date(startOfWeek.getTime() + 7 * 24 * 60 * 60 * 1000 - 1);
+            return { start: startOfWeek, end: endOfWeek };
+            
+        case 'nextWeek':
+            const nextWeekStart = new Date(today);
+            const nextWeekDayOfWeek = nextWeekStart.getDay();
+            const nextMondayOffset = nextWeekDayOfWeek === 0 ? 1 : 8 - nextWeekDayOfWeek;
+            nextWeekStart.setDate(nextWeekStart.getDate() + nextMondayOffset);
+            
+            const nextWeekEnd = new Date(nextWeekStart.getTime() + 7 * 24 * 60 * 60 * 1000 - 1);
+            return { start: nextWeekStart, end: nextWeekEnd };
+            
+        case 'thisMonth':
+            const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+            const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+            return { start: startOfMonth, end: endOfMonth };
+            
+        case 'thisYear':
+            const startOfYear = new Date(now.getFullYear(), 0, 1);
+            const endOfYear = new Date(now.getFullYear(), 11, 31, 23, 59, 59);
+            return { start: startOfYear, end: endOfYear };
+            
+        default:
+            return { start: null, end: null };
+    }
+}
+
+// 날짜 문자열을 Date 객체로 변환
+function parseDate(dateStr) {
+    if (!dateStr) return null;
+    
+    // YYYY-MM-DD 형태의 날짜 처리
+    if (typeof dateStr === 'string' && dateStr.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        return new Date(dateStr + 'T00:00:00');
+    }
+    
+    return new Date(dateStr);
+}
+
+// 날짜가 범위 내에 있는지 확인
+function isDateInRange(date, startDate, endDate) {
+    if (!date || !startDate || !endDate) return false;
+    
+    const targetDate = parseDate(date);
+    if (!targetDate || isNaN(targetDate.getTime())) return false;
+    
+    return targetDate >= startDate && targetDate <= endDate;
+}
+
+// 기간별 데이터 필터링
+function filterByDatePeriod(period) {
+    console.log(`📅 ${period} 기간으로 데이터 필터링 시작...`);
+    
+    // 활성 버튼 스타일 변경
+    document.querySelectorAll('.date-btn').forEach(btn => btn.classList.remove('active'));
+    event.target.classList.add('active');
+    
+    const dateRange = getDateRange(period);
+    if (!dateRange.start || !dateRange.end) {
+        console.error('❌ 날짜 범위 계산 실패');
+        return;
+    }
+    
+    console.log(`📊 필터링 범위: ${dateRange.start.toLocaleDateString()} ~ ${dateRange.end.toLocaleDateString()}`);
+    
+    const filteredData = allInCargoData.filter(item => {
+        const recordDate = item.data.date;
+        return isDateInRange(recordDate, dateRange.start, dateRange.end);
+    });
+    
+    console.log(`✅ ${filteredData.length}개 레코드가 필터링됨 (전체 ${allInCargoData.length}개 중)`);
+    
+    displayFilteredData(filteredData, `${period} (${dateRange.start.toLocaleDateString()} ~ ${dateRange.end.toLocaleDateString()})`);
+}
+
+// 사용자 지정 날짜 범위로 필터링
+function filterByCustomDateRange() {
+    const startDateInput = document.getElementById('startDate');
+    const endDateInput = document.getElementById('endDate');
+    
+    if (!startDateInput.value || !endDateInput.value) {
+        alert('시작일과 종료일을 모두 선택해주세요.');
+        return;
+    }
+    
+    const startDate = new Date(startDateInput.value + 'T00:00:00');
+    const endDate = new Date(endDateInput.value + 'T23:59:59');
+    
+    if (startDate > endDate) {
+        alert('시작일이 종료일보다 늦을 수 없습니다.');
+        return;
+    }
+    
+    console.log(`📅 사용자 지정 날짜 범위: ${startDate.toLocaleDateString()} ~ ${endDate.toLocaleDateString()}`);
+    
+    // 모든 버튼 비활성화
+    document.querySelectorAll('.date-btn').forEach(btn => btn.classList.remove('active'));
+    
+    const filteredData = allInCargoData.filter(item => {
+        const recordDate = item.data.date;
+        return isDateInRange(recordDate, startDate, endDate);
+    });
+    
+    console.log(`✅ ${filteredData.length}개 레코드가 필터링됨`);
+    
+    displayFilteredData(filteredData, `${startDate.toLocaleDateString()} ~ ${endDate.toLocaleDateString()}`);
+}
+
+// 필터링된 데이터를 테이블에 표시
+function displayFilteredData(filteredData, periodDescription) {
+    const tableBody = document.querySelector('#containerTable tbody');
+    tableBody.innerHTML = '';
+    
+    if (filteredData.length === 0) {
+        const noDataRow = tableBody.insertRow();
+        noDataRow.innerHTML = `<td colspan="11" style="text-align: center; padding: 20px; color: #6c757d;">선택한 기간(${periodDescription})에 해당하는 데이터가 없습니다.</td>`;
+        return;
+    }
+    
+    filteredData.forEach((item, index) => {
+        const record = item.data;
+        const newRow = tableBody.insertRow();
+        
+        newRow.innerHTML = `
+            <td>${index + 1}</td>
+            <td>${record.date || '-'}</td>
+            <td><strong>${record.container || '-'}</strong></td>
+            <td>${record.count || record.seal || '-'}</td>
+            <td>${record.bl || '-'}</td>
+            <td>${record.description || record.itemName || '-'}</td>
+            <td>${record.qtyEa || '-'}</td>
+            <td>${record.qtyPlt || '-'}</td>
+            <td>${record.spec || '-'}</td>
+            <td>${record.shape || '-'}</td>
+            <td>${record.remark || '-'}</td>
+        `;
+        
+        // 데이터 속성 추가
+        newRow.setAttribute('data-record-path', item.path);
+        newRow.setAttribute('data-record-key', item.key);
+    });
+    
+    console.log(`📋 테이블 업데이트 완료: ${filteredData.length}개 레코드 표시 (${periodDescription})`);
+}
+
+// 전체 데이터 보기
+function showAllData() {
+    console.log('📋 전체 데이터 보기');
+    
+    // 모든 버튼 비활성화
+    document.querySelectorAll('.date-btn').forEach(btn => btn.classList.remove('active'));
+    
+    displayFilteredData(allInCargoData, '전체 기간');
+}
+
+// 데이터 새로고침
+async function refreshData() {
+    console.log('🔄 데이터 새로고침 시작...');
+    await loadInCargoDataOnPageLoad();
+    
+    // 오늘 날짜로 기본 필터 적용
+    setTimeout(() => {
+        filterByDatePeriod('today');
+    }, 500);
+}
+
+// Firebase에서 InCargo leaf node 데이터 가져오는 함수
+async function getInCargoLeafData() {
+    try {
+        console.log('🔍 InCargo leaf node 데이터 검색 시작...');
+        
+        const inCargoRef = window.firebaseRef(window.firebaseDb, 'DeptName/WareHouseDept2/InCargo');
+        
+        return new Promise((resolve, reject) => {
+            window.firebaseOnValue(inCargoRef, (snapshot) => {
+                if (snapshot.exists()) {
+                    const data = snapshot.val();
+                    const leafNodes = [];
+                    
+                    console.log('📊 InCargo 데이터 구조 분석 중...');
+                    
+                    // 재귀적으로 leaf node 찾기
+                    function findLeafNodes(obj, path = '') {
+                        if (obj === null || obj === undefined) return;
+                        
+                        if (typeof obj === 'object' && !Array.isArray(obj)) {
+                            const keys = Object.keys(obj);
+                            let hasChildObjects = false;
+                            
+                            // 하위 객체가 있는지 확인
+                            keys.forEach(key => {
+                                const value = obj[key];
+                                if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+                                    // 더 깊은 객체가 있는지 확인
+                                    const hasNestedObjects = Object.values(value).some(v => 
+                                        typeof v === 'object' && v !== null && !Array.isArray(v)
+                                    );
+                                    
+                                    const currentPath = path ? `${path}/${key}` : key;
+                                    
+                                    if (hasNestedObjects) {
+                                        hasChildObjects = true;
+                                        findLeafNodes(value, currentPath);
+                                    } else {
+                                        // 이것이 leaf node (실제 데이터)
+                                        console.log(`🍃 Leaf node 발견: ${currentPath}`);
+                                        leafNodes.push({
+                                            path: currentPath,
+                                            key: key,
+                                            data: value,
+                                            timestamp: value.createdAt || value.updatedAt || new Date().toISOString()
+                                        });
+                                    }
+                                }
+                            });
+                        }
+                    }
+                    
+                    findLeafNodes(data);
+                    
+                    // 최신순으로 정렬 (timestamp 기준)
+                    leafNodes.sort((a, b) => {
+                        const timestampA = new Date(a.timestamp);
+                        const timestampB = new Date(b.timestamp);
+                        return timestampB - timestampA; // 최신순
+                    });
+                    
+                    console.log(`✅ 총 ${leafNodes.length}개의 leaf node 발견`);
+                    console.log('📋 발견된 데이터:', leafNodes);
+                    
+                    resolve(leafNodes);
+                    
+                } else {
+                    console.log('⚠️ InCargo 경로에 데이터가 없습니다.');
+                    resolve([]);
+                }
+            }, { onlyOnce: true });
+        });
+        
+    } catch (error) {
+        console.error('❌ InCargo 데이터 가져오기 실패:', error);
+        throw error;
+    }
+}
+
+// 페이지 로드 시 InCargo 데이터로 테이블 채우기
+async function loadInCargoDataOnPageLoad() {
+    try {
+        console.log('🚀 페이지 로드 시 InCargo 데이터 로드 시작...');
+        
+        // Firebase 연결 확인
+        if (!window.firebaseDb) {
+            console.log('⏳ Firebase 초기화 대기 중...');
+            // Firebase 초기화를 위해 잠시 대기
+            await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+        
+        if (!window.firebaseDb) {
+            console.error('❌ Firebase 데이터베이스가 초기화되지 않았습니다.');
+            return;
+        }
+        
+        const leafData = await getInCargoLeafData();
+        
+        if (leafData.length > 0) {
+            console.log(`📥 ${leafData.length}개의 레코드를 전역 변수에 저장...`);
+            
+            // 전역 변수에 모든 데이터 저장
+            allInCargoData = leafData;
+            
+            console.log(`✅ 데이터 로드 완료: ${leafData.length}개 레코드`);
+            
+            // 기본적으로 오늘 데이터만 표시
+            setTimeout(() => {
+                filterByDatePeriod('today');
+            }, 100);
+            
+        } else {
+            console.log('ℹ️ 표시할 데이터가 없습니다.');
+            allInCargoData = [];
+        }
+        
+    } catch (error) {
+        console.error('❌ 페이지 로드 시 데이터 로드 실패:', error);
+    }
+}
+
+// 페이지 로드 시 초기화
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('화인통상 물류 컨테이너 관리 시스템이 로드되었습니다.');
+    
+    // 테이블 행 클릭 이벤트 리스너 추가
+    addTableRowClickListeners();
+    
+    // 오늘 날짜를 기본값으로 설정
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('startDate').value = today;
+    document.getElementById('endDate').value = today;
+    
+    // Firebase에서 InCargo 데이터 자동 로드
+    loadInCargoDataOnPageLoad();
+});
