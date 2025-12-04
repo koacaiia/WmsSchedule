@@ -13,6 +13,14 @@
 </head>
 <body>
     <div class="container">
+        <!-- 메인 탭 네비게이션 -->
+        <div class="main-tabs">
+            <button class="main-tab-btn active" onclick="switchMainTab('cargo')" data-tab="cargo">화물관리</button>
+            <button class="main-tab-btn" onclick="switchMainTab('summary')" data-tab="summary">주간요약</button>
+        </div>
+        
+        <!-- 화물관리 탭 -->
+        <div id="cargoTab" class="main-tab-content active">
         <!-- 날짜 필터링 검색 바 -->
         <div class="search-bar">
             <!-- 기간 필터 버튼 -->
@@ -37,7 +45,7 @@
             <!-- 전체 보기 및 초기화 -->
             <div class="filter-controls">
                 <button class="control-btn" onclick="addNewArrival()">신규입고</button>
-                <button onclick="refreshData()" class="control-btn refresh-btn">새로고침</button>
+                <button onclick="switchMainTab('summary')" class="control-btn refresh-btn">주간요약</button>
             </div>
         </div>
         
@@ -63,6 +71,63 @@
                 <tbody>
                 </tbody>
             </table>
+        </div>
+        </div>
+        
+        <!-- 주간요약 탭 -->
+        <div id="summaryTab" class="main-tab-content">
+            <div class="weekly-summary-container">
+                <!-- 3x2 그리드 레이아웃 -->
+                <div class="weekly-grid-container">
+                    <!-- 월요일 박스 -->
+                    <div class="weekly-box" id="mondayBox">
+                        <div class="box-header">월요일</div>
+                        <div class="box-content" id="mondayContent">
+                            <div class="loading">데이터 로드 중...</div>
+                        </div>
+                    </div>
+                    
+                    <!-- 화요일 박스 -->
+                    <div class="weekly-box" id="tuesdayBox">
+                        <div class="box-header">화요일</div>
+                        <div class="box-content" id="tuesdayContent">
+                            <div class="loading">데이터 로드 중...</div>
+                        </div>
+                    </div>
+                    
+                    <!-- 수요일 박스 -->
+                    <div class="weekly-box" id="wednesdayBox">
+                        <div class="box-header">수요일</div>
+                        <div class="box-content" id="wednesdayContent">
+                            <div class="loading">데이터 로드 중...</div>
+                        </div>
+                    </div>
+                    
+                    <!-- 목요일 박스 -->
+                    <div class="weekly-box" id="thursdayBox">
+                        <div class="box-header">목요일</div>
+                        <div class="box-content" id="thursdayContent">
+                            <div class="loading">데이터 로드 중...</div>
+                        </div>
+                    </div>
+                    
+                    <!-- 금요일 박스 -->
+                    <div class="weekly-box" id="fridayBox">
+                        <div class="box-header">금요일</div>
+                        <div class="box-content" id="fridayContent">
+                            <div class="loading">데이터 로드 중...</div>
+                        </div>
+                    </div>
+                    
+                    <!-- 주간 합계 박스 -->
+                    <div class="weekly-box total-box" id="totalBox">
+                        <div class="box-header">주간 합계</div>
+                        <div class="box-content" id="totalContent">
+                            <div class="loading">데이터 로드 중...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
     
@@ -139,10 +204,9 @@
         </div>
     </div>
     
+
+
     <!-- JavaScript 파일 -->
     <script src="script.js"></script>
-</body>
-</html>
-       
 </body>
 </html>
