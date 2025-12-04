@@ -13,30 +13,6 @@
 </head>
 <body>
     <div class="container">
-        <h1>화인통상 물류 컨테이너 관리 시스템 (2025)
-            <button class="new-arrival-btn" onclick="addNewArrival()">신규입고</button>
-        </h1>
-        
-        <!-- 요약 카드 -->
-        <!-- <div class="summary-cards">
-            <div class="summary-card">
-                <h3>총 컨테이너</h3>
-                <div class="number">124</div>
-            </div>
-            <div class="summary-card">
-                <h3>적재 중</h3>
-                <div class="number">38</div>
-            </div>
-            <div class="summary-card">
-                <h3>운송 중</h3>
-                <div class="number">52</div>
-            </div>
-            <div class="summary-card">
-                <h3>도착 완료</h3>
-                <div class="number">34</div>
-            </div>
-        </div> -->
-        
         <!-- 날짜 필터링 검색 바 -->
         <div class="search-bar">
             <!-- 기간 필터 버튼 -->
@@ -60,7 +36,7 @@
             
             <!-- 전체 보기 및 초기화 -->
             <div class="filter-controls">
-                <button onclick="showAllData()" class="control-btn">전체 보기</button>
+                <button class="control-btn" onclick="addNewArrival()">신규입고</button>
                 <button onclick="refreshData()" class="control-btn refresh-btn">새로고침</button>
             </div>
         </div>
@@ -72,6 +48,7 @@
                     <tr>
                         <th>순번</th>
                         <th>반입일</th>
+                        <th>화주명</th>
                         <th>컨테이너번호</th> <!-- 3번째 열을 헤더로 사용 -->
                         <th>SEAL</th>
                         <th>Bl</th>
