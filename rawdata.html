@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RawData 파일 처리 - 화인통상</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #f5f5f5;
+        }
+        
+        .rawdata-container {
+            width: 100%;
+            height: 100vh;
+            background-color: white;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        
+        .rawdata-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        
+        .rawdata-table-wrapper {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: auto;
+            border: 1px solid #dee2e6;
+        }
+        
+        .rawdata-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        
+        .rawdata-table th,
+        .rawdata-table td {
+            padding: 10px 12px;
+            text-align: left;
+            border-bottom: 1px solid #e9ecef;
+            white-space: nowrap;
+        }
+        
+        .rawdata-table th {
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            color: white;
+            font-weight: 600;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            border-bottom: 2px solid #1a252f;
+        }
+        
+        .rawdata-table th.sortable-header {
+            cursor: pointer;
+            transition: background 0.2s ease;
+        }
+        
+        .rawdata-table th.sortable-header:hover {
+            background: linear-gradient(135deg, #34495e 0%, #4a6278 100%);
+        }
+        
+        .rawdata-table th.checkbox-header,
+        .rawdata-table th.row-number-header {
+            background: #1a252f;
+            text-align: center;
+        }
+        
+        .rawdata-table th.checkbox-header {
+            width: 40px;
+            min-width: 40px;
+        }
+        
+        .rawdata-table th.row-number-header {
+            width: 50px;
+            min-width: 50px;
+        }
+        
+        .rawdata-table td.checkbox-cell,
+        .rawdata-table td.row-number {
+            text-align: center;
+            background: #f8f9fa;
+        }
+        
+        .rawdata-table td.checkbox-cell {
+            border-right: 1px solid #dee2e6;
+        }
+        
+        .rawdata-table td.row-number {
+            font-weight: 600;
+            color: #6c757d;
+            border-right: 2px solid #dee2e6;
+        }
+        
+        .rawdata-table tbody tr {
+            background: white;
+        }
+        
+        .rawdata-table tbody tr:nth-child(even) {
+            background: #f8f9fa;
+        }
+        
+        .rawdata-table tbody tr:hover {
+            background-color: #e3f2fd;
+        }
+        
+        .rawdata-table tbody tr.selected-row {
+            background-color: #d4edda !important;
+        }
+        
+        .rawdata-table tbody tr.selected-row:hover {
+            background-color: #c3e6cb !important;
+        }
+        
+        .rawdata-table input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+            accent-color: #667eea;
+        }
+        
+        .empty-message {
+            text-align: center;
+            padding: 80px 20px;
+            color: #888;
+            font-size: 16px;
+        }
+        
+        .empty-message .icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+        }
+        
+        .rawdata-toolbar {
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            padding: 10px 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            gap: 10px;
+        }
+        
+        .rawdata-toolbar .btn {
+            padding: 8px 20px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .rawdata-toolbar .btn-convert {
+            background: #17a2b8;
+            color: white;
+        }
+        
+        .rawdata-toolbar .btn-convert:hover {
+            background: #138496;
+        }
+        
+        .rawdata-toolbar .btn-register {
+            background: #28a745;
+            color: white;
+        }
+        
+        .rawdata-toolbar .btn-register:hover {
+            background: #218838;
+        }
+    </style>
+</head>
+<body>
+    <div class="rawdata-container">
+        <div class="rawdata-toolbar">
+            <button class="btn btn-convert" onclick="convertData()">변환</button>
+            <button class="btn btn-register" onclick="registerData()">등록</button>
+        </div>
+        <div class="rawdata-content">
+            <div class="rawdata-table-wrapper">
+                <table id="rawDataTable" class="rawdata-table">
+                    <thead id="rawDataTableHead">
+                        <!-- 선택된 파일의 1행이 헤더로 동적 생성됨 -->
+                    </thead>
+                    <tbody id="rawDataTableBody">
+                        <!-- 2행부터 데이터로 표시됨 -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <!-- SheetJS 라이브러리 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    
+    <script>
+        // 페이지 로드 시 localStorage에서 데이터 읽어서 테이블 생성
+        document.addEventListener('DOMContentLoaded', function() {
+            const storedData = localStorage.getItem('rawDataContent');
+            if (storedData) {
+                try {
+                    const jsonData = JSON.parse(storedData);
+                    createDataTable(jsonData);
+                    // 사용 후 localStorage 정리
+                    localStorage.removeItem('rawDataContent');
+                    localStorage.removeItem('rawDataFileName');
+                } catch (error) {
+                    console.error('데이터 파싱 오류:', error);
+                }
+            }
+        });
+        
+        // 테이블 생성
+        function createDataTable(data) {
+            const tableHead = document.getElementById('rawDataTableHead');
+            const tableBody = document.getElementById('rawDataTableBody');
+            
+            // 테이블 초기화
+            tableHead.innerHTML = '';
+            tableBody.innerHTML = '';
+            
+            if (data.length === 0) {
+                return;
+            }
+            
+            // === 1행(첫 번째 행)을 헤더로 사용 ===
+            const headers = data[0];
+            const headerRow = document.createElement('tr');
+            
+            // 체크박스 헤더 추가 (전체 선택)
+            const thCheck = document.createElement('th');
+            thCheck.className = 'checkbox-header';
+            const checkAll = document.createElement('input');
+            checkAll.type = 'checkbox';
+            checkAll.id = 'checkAllRows';
+            checkAll.title = '전체 선택/해제';
+            checkAll.onchange = function() { toggleAllRowCheckboxes(this.checked); };
+            thCheck.appendChild(checkAll);
+            headerRow.appendChild(thCheck);
+            
+            // 순번 헤더 추가
+            const thNo = document.createElement('th');
+            thNo.textContent = 'No.';
+            thNo.className = 'row-number-header';
+            headerRow.appendChild(thNo);
+            
+            // Excel 1행의 각 셀을 헤더로 사용
+            headers.forEach((header, index) => {
+                const th = document.createElement('th');
+                th.textContent = header || `Column ${index + 1}`;
+                th.className = 'sortable-header';
+                th.dataset.colIndex = index + 2;
+                th.onclick = function() { sortTable(index + 2); };
+                th.title = `클릭하여 정렬 (헤더: ${header || 'Column ' + (index + 1)})`;
+                headerRow.appendChild(th);
+            });
+            tableHead.appendChild(headerRow);
+            
+            console.log(`📝 헤더 생성 완료: ${headers.length}개 컬럼 (Excel 1행 기준)`);
+            
+            // === 2행부터 데이터 행으로 표시 ===
+            let dataRowCount = 0;
+            for (let i = 1; i < data.length; i++) {
+                const rowData = data[i];
+                // 빈 행 건너뛰기
+                if (!rowData || rowData.every(cell => cell === null || cell === undefined || cell === '')) continue;
+                
+                dataRowCount++;
+                const row = document.createElement('tr');
+                row.dataset.rowIndex = dataRowCount;
+                
+                // 체크박스 셀 추가
+                const tdCheck = document.createElement('td');
+                tdCheck.className = 'checkbox-cell';
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.className = 'row-checkbox';
+                checkbox.dataset.rowIndex = dataRowCount;
+                checkbox.onchange = function() { updateRowSelection(this); };
+                tdCheck.appendChild(checkbox);
+                row.appendChild(tdCheck);
+                
+                // 순번 셀 추가
+                const tdNo = document.createElement('td');
+                tdNo.textContent = dataRowCount;
+                tdNo.className = 'row-number';
+                row.appendChild(tdNo);
+                
+                // 데이터 셀
+                for (let j = 0; j < headers.length; j++) {
+                    const td = document.createElement('td');
+                    td.textContent = rowData[j] !== undefined && rowData[j] !== null ? rowData[j] : '';
+                    row.appendChild(td);
+                }
+                
+                tableBody.appendChild(row);
+            }
+            
+            // 전역 변수에 데이터 저장
+            window.rawDataContent = data;
+            
+            console.log(`✅ 테이블 생성 완료: 헤더 ${headers.length}개, 데이터 ${dataRowCount}행`);
+        }
+        
+        // 전체 체크박스 토글
+        function toggleAllRowCheckboxes(checked) {
+            const checkboxes = document.querySelectorAll('#rawDataTableBody .row-checkbox');
+            checkboxes.forEach(cb => {
+                cb.checked = checked;
+                updateRowSelection(cb);
+            });
+            console.log(`☑️ 전체 ${checked ? '선택' : '해제'}: ${checkboxes.length}행`);
+        }
+        
+        // 행 선택 상태 업데이트
+        function updateRowSelection(checkbox) {
+            const row = checkbox.closest('tr');
+            if (checkbox.checked) {
+                row.classList.add('selected-row');
+            } else {
+                row.classList.remove('selected-row');
+            }
+            
+            // 전체 선택 체크박스 상태 업데이트
+            const allCheckboxes = document.querySelectorAll('#rawDataTableBody .row-checkbox');
+            const checkedCount = document.querySelectorAll('#rawDataTableBody .row-checkbox:checked').length;
+            const checkAll = document.getElementById('checkAllRows');
+            if (checkAll) {
+                checkAll.checked = checkedCount === allCheckboxes.length && allCheckboxes.length > 0;
+                checkAll.indeterminate = checkedCount > 0 && checkedCount < allCheckboxes.length;
+            }
+        }
+        
+        // 선택된 행 데이터 가져오기
+        function getSelectedRows() {
+            const selectedRows = [];
+            const checkboxes = document.querySelectorAll('#rawDataTableBody .row-checkbox:checked');
+            checkboxes.forEach(cb => {
+                const row = cb.closest('tr');
+                const rowData = [];
+                row.querySelectorAll('td').forEach((td, idx) => {
+                    if (idx > 1) { // 체크박스, 순번 제외
+                        rowData.push(td.textContent);
+                    }
+                });
+                selectedRows.push(rowData);
+            });
+            return selectedRows;
+        }
+        
+        // 테이블 정렬
+        function sortTable(colIndex) {
+            const table = document.getElementById('rawDataTable');
+            const tbody = table.querySelector('tbody');
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+            
+            if (rows.length === 0) return;
+            
+            // 정렬 방향 토글
+            const currentDir = table.dataset.sortDir === 'asc' ? 'desc' : 'asc';
+            table.dataset.sortDir = currentDir;
+            
+            rows.sort((a, b) => {
+                const aVal = a.cells[colIndex]?.textContent.trim() || '';
+                const bVal = b.cells[colIndex]?.textContent.trim() || '';
+                
+                // 숫자 비교
+                const aNum = parseFloat(aVal.replace(/,/g, ''));
+                const bNum = parseFloat(bVal.replace(/,/g, ''));
+                
+                if (!isNaN(aNum) && !isNaN(bNum)) {
+                    return currentDir === 'asc' ? aNum - bNum : bNum - aNum;
+                }
+                
+                // 문자열 비교
+                return currentDir === 'asc' 
+                    ? aVal.localeCompare(bVal, 'ko') 
+                    : bVal.localeCompare(aVal, 'ko');
+            });
+            
+            // 순번 재설정 및 행 재삽입
+            rows.forEach((row, idx) => {
+                row.cells[1].textContent = idx + 1; // 순번 셀 (인덱스 1)
+                tbody.appendChild(row);
+            });
+            
+            console.log(`📊 정렬 완료: 컬럼 ${colIndex}, ${currentDir}`);
+        }
+        
+        // 변환 버튼 클릭
+        function convertData() {
+            const selectedRows = getSelectedRows();
+            if (selectedRows.length === 0) {
+                alert('변환할 행을 선택해주세요.');
+                return;
+            }
+            
+            // 현재 테이블 헤더 가져오기
+            const headers = [];
+            document.querySelectorAll('#rawDataTableHead th.sortable-header').forEach(th => {
+                headers.push(th.textContent.trim());
+            });
+            
+            // 헤더 매핑 (rawdata 헤더 → containerTable 헤더)
+            // 차순 → SEAL, container → 형태, B/L No → Bl, 입고요청일 → 반입일, 발주 품목 → 품명
+            const headerMapping = {
+                '차순': 'SEAL',
+                'container': '형태',
+                'Container': '형태',
+                'CONTAINER': '형태',
+                'B/L No': 'Bl',
+                'B/L NO': 'Bl',
+                'B/L no': 'Bl',
+                '입고요청일': '반입일',
+                '발주 품목': '품명',
+                '발주품목': '품명'
+            };
+            
+            // containerTable 헤더 순서
+            const containerTableHeaders = ['반입일', '화주명', '컨테이너번호', 'SEAL', 'Bl', '품명', '수량(EA)', '수량(PLT)', '규격', '형태', '특이사항'];
+            
+            // 각 rawdata 헤더가 containerTable의 어느 컬럼에 매핑되는지 찾기
+            const columnMapping = {};
+            headers.forEach((header, idx) => {
+                const mappedHeader = headerMapping[header] || headerMapping[header.trim()] || null;
+                if (mappedHeader) {
+                    const targetIdx = containerTableHeaders.indexOf(mappedHeader);
+                    if (targetIdx !== -1) {
+                        columnMapping[idx] = targetIdx;
+                    }
+                }
+            });
+            
+            console.log('헤더 목록:', headers);
+            console.log('컬럼 매핑:', columnMapping);
+            
+            // 선택된 행 데이터를 containerTable 형식으로 변환
+            const convertedData = selectedRows.map(rowData => {
+                const newRow = new Array(containerTableHeaders.length).fill('');
+                rowData.forEach((cellData, idx) => {
+                    if (columnMapping[idx] !== undefined) {
+                        newRow[columnMapping[idx]] = cellData;
+                    }
+                });
+                return newRow;
+            });
+            
+            console.log('변환된 데이터:', convertedData);
+            
+            // localStorage에 변환된 데이터 저장
+            localStorage.setItem('convertedRawData', JSON.stringify({
+                headers: containerTableHeaders,
+                data: convertedData
+            }));
+            
+            alert(`${selectedRows.length}개 행이 변환되었습니다. 메인 페이지에서 데이터를 확인하세요.`);
+            
+            // 원래 창(opener)에 데이터 전달 시도
+            if (window.opener && !window.opener.closed) {
+                try {
+                    window.opener.loadConvertedRawData();
+                } catch (e) {
+                    console.log('opener 함수 호출 실패:', e);
+                }
+            }
+        }
+        
+        // 등록 버튼 클릭
+        function registerData() {
+            const selectedRows = getSelectedRows();
+            if (selectedRows.length === 0) {
+                alert('등록할 행을 선택해주세요.');
+                return;
+            }
+            console.log('등록할 데이터:', selectedRows);
+            alert(`${selectedRows.length}개 행이 선택되었습니다. 등록 기능을 구현해주세요.`);
+        }
+    </script>
+</body>
+</html>

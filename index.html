@@ -45,7 +45,9 @@
             <!-- 전체 보기 및 초기화 -->
             <div class="filter-controls">
                 <button class="control-btn" onclick="addNewArrival()">신규입고</button>
-                <button onclick="switchMainTab('summary')" class="control-btn refresh-btn">주간요약</button>
+                <select id="shipperFilterSelect" onchange="filterTableByShipper()" class="shipper-select">
+                    <option value="">전체 화주</option>
+                </select>
             </div>
         </div>
         
@@ -55,12 +57,12 @@
                 <thead>
                     <tr>
                         <th>순번</th>
-                        <th>반입일</th>
-                        <th>화주명</th>
-                        <th>컨테이너번호</th> <!-- 3번째 열을 헤더로 사용 -->
-                        <th>SEAL</th>
-                        <th>Bl</th>
-                        <th>품명</th>
+                        <th class="sortable" onclick="sortTable('date')" data-column="date">반입일 <span class="sort-icon">↕</span></th>
+                        <th class="sortable" onclick="sortTable('shipper')" data-column="shipper">화주명 <span class="sort-icon">↕</span></th>
+                        <th class="sortable" onclick="sortTable('container')" data-column="container">컨테이너번호 <span class="sort-icon">↕</span></th>
+                        <th class="sortable" onclick="sortTable('seal')" data-column="seal">SEAL <span class="sort-icon">↕</span></th>
+                        <th class="sortable" onclick="sortTable('bl')" data-column="bl">Bl <span class="sort-icon">↕</span></th>
+                        <th class="sortable" onclick="sortTable('itemName')" data-column="itemName">품명 <span class="sort-icon">↕</span></th>
                         <th>수량(EA)</th>
                         <th>수량(PLT)</th>
                         <th>규격</th>
@@ -81,49 +83,93 @@
                 <div class="weekly-grid-container">
                     <!-- 월요일 박스 -->
                     <div class="weekly-box" id="mondayBox">
-                        <div class="box-header">월요일</div>
-                        <div class="box-content" id="mondayContent">
-                            <div class="loading">데이터 로드 중...</div>
+                        <div class="box-header">
+                            <div class="day-name">월요일</div>
+                            <div class="day-date" id="mondayDate">12/01</div>
+                            <div class="box-summary-header" id="mondaySummaryHeader"></div>
+                        </div>
+                        <div class="box-body">
+                            <div class="box-content" id="mondayContent">
+                                <div class="loading">데이터 로드 중...</div>
+                            </div>
                         </div>
                     </div>
                     
                     <!-- 화요일 박스 -->
                     <div class="weekly-box" id="tuesdayBox">
-                        <div class="box-header">화요일</div>
-                        <div class="box-content" id="tuesdayContent">
-                            <div class="loading">데이터 로드 중...</div>
+                        <div class="box-header">
+                            <div class="day-name">화요일</div>
+                            <div class="day-date" id="tuesdayDate">12/02</div>
+                            <div class="box-summary-header" id="tuesdaySummaryHeader"></div>
+                        </div>
+                        <div class="box-body">
+                            <div class="box-content" id="tuesdayContent">
+                                <div class="loading">데이터 로드 중...</div>
+                            </div>
                         </div>
                     </div>
                     
                     <!-- 수요일 박스 -->
                     <div class="weekly-box" id="wednesdayBox">
-                        <div class="box-header">수요일</div>
-                        <div class="box-content" id="wednesdayContent">
-                            <div class="loading">데이터 로드 중...</div>
+                        <div class="box-header">
+                            <div class="day-name">수요일</div>
+                            <div class="day-date" id="wednesdayDate">12/03</div>
+                            <div class="box-summary-header" id="wednesdaySummaryHeader"></div>
+                        </div>
+                        <div class="box-body">
+                            <div class="box-content" id="wednesdayContent">
+                                <div class="loading">데이터 로드 중...</div>
+                            </div>
                         </div>
                     </div>
                     
                     <!-- 목요일 박스 -->
                     <div class="weekly-box" id="thursdayBox">
-                        <div class="box-header">목요일</div>
-                        <div class="box-content" id="thursdayContent">
-                            <div class="loading">데이터 로드 중...</div>
+                        <div class="box-header">
+                            <div class="day-name">목요일</div>
+                            <div class="day-date" id="thursdayDate">12/04</div>
+                            <div class="box-summary-header" id="thursdaySummaryHeader"></div>
+                        </div>
+                        <div class="box-body">
+                            <div class="box-content" id="thursdayContent">
+                                <div class="loading">데이터 로드 중...</div>
+                            </div>
                         </div>
                     </div>
                     
                     <!-- 금요일 박스 -->
                     <div class="weekly-box" id="fridayBox">
-                        <div class="box-header">금요일</div>
-                        <div class="box-content" id="fridayContent">
-                            <div class="loading">데이터 로드 중...</div>
+                        <div class="box-header">
+                            <div class="day-name">금요일</div>
+                            <div class="day-date" id="fridayDate">12/05</div>
+                            <div class="box-summary-header" id="fridaySummaryHeader"></div>
+                        </div>
+                        <div class="box-body">
+                            <div class="box-content" id="fridayContent">
+                                <div class="loading">데이터 로드 중...</div>
+                            </div>
                         </div>
                     </div>
                     
                     <!-- 주간 합계 박스 -->
                     <div class="weekly-box total-box" id="totalBox">
-                        <div class="box-header">주간 합계</div>
-                        <div class="box-content" id="totalContent">
-                            <div class="loading">데이터 로드 중...</div>
+                        <div class="box-header">
+                            <button id="totalSummaryBtn" onclick="showWeeklyTotal()">주간 합계</button>
+                            <!-- 화주명 필터 -->
+                            <div class="shipper-filter-inline">
+                                <select id="shipperSelect" onchange="filterByShipper()">
+                                    <option value="">전체 화주</option>
+                                </select>
+                            </div>
+                            <div class="box-summary-header" id="totalSummaryHeader"></div>
+                        </div>
+                        <div class="box-body">
+                            <div class="box-content" id="totalContent">
+                                <div class="loading">데이터 로드 중...</div>
+                            </div>
+                            <div class="box-summary" id="totalSum">
+                                <div class="summary-list"></div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -200,6 +246,8 @@
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" onclick="closeModal()">취소</button>
                 <button type="button" class="btn btn-primary" onclick="submitNewArrival()">등록</button>
+                <button type="button" class="btn btn-info" onclick="selectRawDataFile()">RawData 등록</button>
+                <input type="file" id="rawDataFileInput" style="display: none;" accept=".xlsx,.xls,.xlsm" onchange="handleRawDataFileAndOpenWindow(event)">
             </div>
         </div>
     </div>
@@ -208,5 +256,108 @@
 
     <!-- JavaScript 파일 -->
     <script src="script.js"></script>
+    <!-- SheetJS 라이브러리 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    
+    <script>
+        // RawData 파일 선택 다이얼로그 열기
+        function selectRawDataFile() {
+            document.getElementById('rawDataFileInput').click();
+        }
+        
+        // 파일 선택 후 새 창으로 열기
+        function handleRawDataFileAndOpenWindow(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, {type: 'array'});
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    const jsonData = XLSX.utils.sheet_to_json(worksheet, {header: 1});
+                    
+                    // localStorage에 데이터 저장
+                    localStorage.setItem('rawDataContent', JSON.stringify(jsonData));
+                    localStorage.setItem('rawDataFileName', file.name);
+                    
+                    // 모달 닫기
+                    closeModal();
+                    
+                    // 새 탭으로 열기
+                    window.open('rawdata.html', '_blank');
+                    
+                    // 파일 입력 초기화
+                    event.target.value = '';
+                } catch (error) {
+                    console.error('파일 읽기 오류:', error);
+                    alert('파일을 읽는 중 오류가 발생했습니다.');
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+        
+        // rawdata.html에서 변환된 데이터를 containerTable에 로드
+        function loadConvertedRawData() {
+            const storedData = localStorage.getItem('convertedRawData');
+            if (!storedData) {
+                console.log('변환된 데이터가 없습니다.');
+                return;
+            }
+            
+            try {
+                const { headers, data } = JSON.parse(storedData);
+                const tableBody = document.querySelector('#containerTable tbody');
+                
+                if (!tableBody) {
+                    console.error('containerTable tbody를 찾을 수 없습니다.');
+                    return;
+                }
+                
+                // 기존 행 개수 확인 (순번 계산용)
+                const existingRows = tableBody.querySelectorAll('tr').length;
+                
+                // 데이터를 테이블에 추가
+                data.forEach((rowData, idx) => {
+                    const tr = document.createElement('tr');
+                    
+                    // 순번
+                    const tdNo = document.createElement('td');
+                    tdNo.textContent = existingRows + idx + 1;
+                    tr.appendChild(tdNo);
+                    
+                    // containerTable 헤더 순서: 반입일, 화주명, 컨테이너번호, SEAL, Bl, 품명, 수량(EA), 수량(PLT), 규격, 형태, 특이사항
+                    rowData.forEach(cellData => {
+                        const td = document.createElement('td');
+                        td.textContent = cellData || '';
+                        tr.appendChild(td);
+                    });
+                    
+                    tableBody.appendChild(tr);
+                });
+                
+                console.log(`✅ ${data.length}개 행이 containerTable에 추가되었습니다.`);
+                
+                // localStorage 정리
+                localStorage.removeItem('convertedRawData');
+                
+                // 화물관리 탭으로 전환
+                showTab('cargoTab');
+                
+            } catch (error) {
+                console.error('데이터 로드 오류:', error);
+            }
+        }
+        
+        // 페이지 로드 시 변환된 데이터 확인
+        window.addEventListener('focus', function() {
+            const storedData = localStorage.getItem('convertedRawData');
+            if (storedData) {
+                loadConvertedRawData();
+            }
+        });
+    </script>
 </body>
 </html>

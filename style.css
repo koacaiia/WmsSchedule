@@ -11,19 +11,19 @@ body {
 .main-tabs {
     display: flex;
     gap: 0;
-    margin-bottom: 20px;
-    border-bottom: 3px solid #e9ecef;
+    margin-bottom: 10px;
+    border-bottom: 1px solid #e9ecef;
 }
 
 .main-tab-btn {
     flex: 1;
-    padding: 15px 30px;
+    padding: 7px 14px;
     background: #f8f9fa;
     border: none;
-    border-bottom: 3px solid transparent;
+    border-bottom: 2px solid transparent;
     cursor: pointer;
     font-weight: 500;
-    font-size: 16px;
+    font-size: 12px;
     transition: all 0.3s ease;
     color: #495057;
 }
@@ -218,6 +218,24 @@ h1 {
     transition: background-color 0.3s ease;
 }
 
+.btn-info {
+    background-color: #17a2b8;
+    color: white;
+}
+
+.btn-info:hover {
+    background-color: #138496;
+}
+
+.btn-success {
+    background-color: #28a745;
+    color: white;
+}
+
+.btn-success:hover {
+    background-color: #218838;
+}
+
 .btn-primary {
     background-color: #007bff;
     color: white;
@@ -259,6 +277,33 @@ h1 {
     background-color: #0056b3;
 }
 
+/* 정렬 아이콘 스타일 */
+.sort-icon {
+    font-size: 9px;
+    color: #ffffff;
+    margin-left: 3px;
+    opacity: 0.6;
+}
+
+th.sortable.sort-asc .sort-icon::before {
+    content: '↑';
+    color: #ffc107;
+    font-weight: bold;
+    opacity: 1;
+}
+
+th.sortable.sort-desc .sort-icon::before {
+    content: '↓';
+    color: #ffc107;
+    font-weight: bold;
+    opacity: 1;
+}
+
+th.sortable.sort-asc .sort-icon,
+th.sortable.sort-desc .sort-icon {
+    opacity: 1;
+}
+
 /* 테이블 헤더 강제 고정 */
 #containerTable thead {
     position: sticky !important;
@@ -283,9 +328,9 @@ h1 {
 }
 
 .sort-arrow {
-    font-size: 0.8em;
+    font-size: 0.9em;
     color: #ffffff;
-    margin-left: 5px;
+    margin-left: 3px;
     transition: transform 0.2s ease, color 0.2s ease;
     display: inline-block;
 }
@@ -294,7 +339,7 @@ table {
     width: 100%;
     border-collapse: collapse;
     margin: 0;
-    font-size: 14px;
+    font-size: 10px;
     position: relative;
 }
 
@@ -307,7 +352,7 @@ thead {
 
 th, td {
     border: 1px solid #ddd;
-    padding: 12px 8px;
+    padding: 8px 6px;
     text-align: center;
     vertical-align: middle;
 }
@@ -381,37 +426,40 @@ tbody tr:hover {
 }
 
 .search-bar {
-    margin-bottom: 15px;
+    margin-bottom: 5px;
     display: flex;
     flex-direction: row;
-    gap: 15px;
+    gap: 5px;
     flex-shrink: 0;
     background-color: #f8f9fa;
-    padding: 15px;
-    border-radius: 8px;
+    padding: 5px;
+    border-radius: 3px;
     border: 1px solid #dee2e6;
     align-items: center;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    justify-content: space-between;
 }
 
 /* 날짜 필터 버튼 스타일 */
 .date-filter-buttons {
     display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
+    gap: 3px;
+    flex-wrap: nowrap;
     align-items: center;
+    flex: 2;
 }
 
 .date-btn {
-    padding: 8px 16px;
+    padding: 3px 6px;
     background-color: #6c757d;
     color: white;
     border: none;
-    border-radius: 20px;
+    border-radius: 3px;
     cursor: pointer;
-    font-size: 13px;
+    font-size: 10px;
     font-weight: 500;
     transition: all 0.3s ease;
+    white-space: nowrap;
 }
 
 .date-btn:hover {
@@ -431,23 +479,27 @@ tbody tr:hover {
 /* 사용자 지정 날짜 범위 스타일 */
 .date-range-filter {
     display: flex;
-    gap: 10px;
+    gap: 4px;
     align-items: center;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    flex: 1.5;
+    justify-content: center;
 }
 
 .date-range-filter label {
     font-weight: 500;
     color: #495057;
-    font-size: 13px;
+    font-size: 10px;
+    white-space: nowrap;
 }
 
 .date-range-filter input[type="date"] {
-    padding: 8px 12px;
+    padding: 3px 4px;
     border: 1px solid #ced4da;
-    border-radius: 4px;
-    font-size: 13px;
+    border-radius: 2px;
+    font-size: 10px;
     background-color: white;
+    width: 110px;
 }
 
 .date-range-filter input[type="date"]:focus {
@@ -468,20 +520,23 @@ tbody tr:hover {
 /* 필터 컨트롤 스타일 */
 .filter-controls {
     display: flex;
-    gap: 10px;
+    gap: 5px;
     align-items: center;
+    flex: 1;
+    justify-content: flex-end;
 }
 
 .control-btn {
-    padding: 8px 16px;
+    padding: 3px 6px;
     border: 1px solid #dee2e6;
     background-color: white;
     color: #495057;
-    border-radius: 4px;
+    border-radius: 2px;
     cursor: pointer;
-    font-size: 13px;
+    font-size: 10px;
     font-weight: 500;
     transition: all 0.3s ease;
+    white-space: nowrap;
 }
 
 .control-btn:hover {
@@ -498,6 +553,31 @@ tbody tr:hover {
 .refresh-btn:hover {
     background-color: #138496;
     border-color: #117a8b;
+}
+
+/* 화주 선택 드롭다운 스타일 */
+.shipper-select {
+    padding: 3px 5px;
+    border: 1px solid #dee2e6;
+    background-color: white;
+    color: #495057;
+    border-radius: 2px;
+    cursor: pointer;
+    font-size: 10px;
+    font-weight: 500;
+    min-width: 110px;
+    max-width: 130px;
+    transition: all 0.3s ease;
+}
+
+.shipper-select:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
+.shipper-select:hover {
+    border-color: #adb5bd;
 }
 
 .summary-cards {
@@ -543,6 +623,38 @@ tbody tr:hover {
     overflow: hidden;
 }
 
+/* 화주명 필터 컨테이너 (사용 안함) */
+.shipper-filter-container {
+    display: none;
+}
+
+.shipper-filter-container label {
+    font-weight: 600;
+    color: #495057;
+    white-space: nowrap;
+}
+
+#shipperSelect {
+    padding: 8px 12px;
+    border: 2px solid #e9ecef;
+    border-radius: 6px;
+    font-size: 14px;
+    background: white;
+    cursor: pointer;
+    transition: border-color 0.2s ease;
+    min-width: 200px;
+}
+
+#shipperSelect:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+}
+
+#shipperSelect:hover {
+    border-color: #007bff;
+}
+
 .weekly-grid-container {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -575,19 +687,261 @@ tbody tr:hover {
     padding: 5px 6px;
     font-weight: bold;
     font-size: 9px;
-    text-align: center;
     flex-shrink: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.box-summary-header {
+    display: flex;
+    gap: 3px;
+    align-items: center;
+    font-size: 7px;
+    flex-wrap: wrap;
+}
+
+.summary-spec-item {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 1px 3px;
+    border-radius: 2px;
+    font-weight: bold;
+    min-width: 20px;
+    justify-content: center;
+}
+
+.summary-spec-item.spec-40ft {
+    background-color: red;
+    color: white;
+}
+
+.summary-spec-item.spec-20ft {
+    background-color: white;
+    color: black;
+}
+
+.summary-spec-item.spec-lcl {
+    background-color: red;
+    color: white;
+}
+
+.summary-spec-item.spec-other {
+    background-color: rgba(255, 255, 255, 0.3);
+    color: white;
+}
+
+.summary-shipper-name {
+    font-weight: bold;
+    color: #333;
+    margin-right: 5px;
+}
+
+.summary-separator {
+    margin: 0 8px;
+    color: #ddd;
+}
+
+.day-name {
+    font-weight: bold;
+}
+
+.day-date {
+    font-size: 8px;
+    opacity: 0.9;
 }
 
 .total-box .box-header {
     background: linear-gradient(135deg, #28a745 0%, #1e7e34 100%);
+    justify-content: space-between;
+}
+
+#totalSummaryBtn {
+    background: none;
+    border: none;
+    color: white;
+    font-weight: bold;
+    font-size: 9px;
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 3px;
+    transition: background-color 0.3s ease;
+}
+
+#totalSummaryBtn:hover {
+    background-color: rgba(255, 255, 255, 0.2);
+}
+
+/* 인라인 화주 필터 스타일 */
+.shipper-filter-inline {
+    display: flex;
+    align-items: center;
+}
+
+.shipper-filter-inline select {
+    padding: 2px 4px;
+    border: 1px solid rgba(255,255,255,0.3);
+    background-color: rgba(255,255,255,0.9);
+    color: #495057;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 8px;
+    font-weight: 500;
+    min-width: 80px;
+    max-width: 100px;
+    transition: all 0.2s ease;
+}
+
+.shipper-filter-inline select:focus {
+    outline: none;
+    border-color: rgba(255,255,255,0.8);
+    background-color: white;
+}
+
+.shipper-filter-inline select:hover {
+    background-color: white;
+}
+
+/* 박스 바디 - 단일 컬럼 레이아웃 */
+.box-body {
+    flex: 1;
+    padding: 4px;
+    overflow: hidden;
 }
 
 .box-content {
-    flex: 1;
-    /* padding: 16px; */
     overflow-y: auto;
     font-size: 14px;
+    height: 100%;
+}
+
+.box-summary {
+    overflow-y: auto;
+    font-size: 11px;
+    padding: 4px;
+    background-color: #f8f9fa;
+    border-radius: 4px;
+}
+
+.box-footer {
+    background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
+    color: white;
+    padding: 5px 6px;
+    font-weight: bold;
+    font-size: 9px;
+    flex-shrink: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.total-footer {
+    background: linear-gradient(135deg, #28a745 0%, #1e7e34 100%);
+}
+
+.footer-totals {
+    display: flex;
+    gap: 8px;
+    font-size: 8px;
+}
+
+.footer-spec {
+    background-color: rgba(255, 255, 255, 0.2);
+    padding: 2px 4px;
+    border-radius: 2px;
+    font-weight: bold;
+}
+
+.summary-list {
+    font-size: 9px;
+    overflow: hidden;
+}
+
+/* 화주별 섹션 */
+.summary-shipper {
+    margin-bottom: 6px;
+}
+
+.shipper-header {
+    display: flex;
+    justify-content: space-between;
+    padding: 3px 5px;
+    background-color: #007bff;
+    color: white;
+    border-radius: 3px;
+    font-weight: bold;
+    font-size: 9px;
+}
+
+.shipper-name {
+    font-weight: 600;
+}
+
+.container-count {
+    font-weight: bold;
+}
+
+/* Spec별 아이템 */
+.spec-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 2px 8px;
+    margin: 1px 0;
+    background-color: #f8f9fa;
+    border-radius: 2px;
+    border-left: 2px solid #6c757d;
+    font-size: 8px;
+}
+
+.spec-name {
+    color: #495057;
+}
+
+.spec-count {
+    font-weight: bold;
+    color: #6c757d;
+}
+
+/* 전체 합계 섹션 */
+.spec-totals {
+    margin-top: 8px;
+    border-top: 1px solid #dee2e6;
+    padding-top: 4px;
+}
+
+.totals-header {
+    background-color: #28a745;
+    color: white;
+    padding: 3px 5px;
+    border-radius: 3px;
+    text-align: center;
+    font-weight: bold;
+    font-size: 8px;
+    margin-bottom: 2px;
+}
+
+.total-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 2px 5px;
+    margin: 1px 0;
+    background-color: #e7f3e7;
+    border-radius: 2px;
+    border-left: 3px solid #28a745;
+    font-size: 8px;
+}
+
+.total-spec {
+    font-weight: 600;
+    color: #155724;
+}
+
+.total-count {
+    font-weight: bold;
+    color: #28a745;
 }
 
 .loading {
@@ -599,11 +953,76 @@ tbody tr:hover {
 
 .day-item {
     border-bottom: 1px solid #f1f3f4;
-    padding: 8px 0;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
+    padding: 6px;
+    margin: 2px 0;
     font-size: 60%;
+    display: grid;
+    grid-template-columns: 3fr 3fr 3fr 1fr;
+    grid-gap: 8px;
+    align-items: center;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+}
+
+.day-item.spec-40 {
+    background-color: #ffffff;
+    color: #333333;
+}
+
+.day-item.shape-bulk {
+    background-color: #f8f9fa;
+}
+
+.item-spec {
+    color: #6c757d;
+    font-size: 80%;
+    font-weight: bold;
+    grid-column: 4;
+    text-align: center;
+}
+
+/* spec별 컨테이너 스타일 */
+.day-item.spec-40FT .item-container {
+    color: #000000;
+    font-weight: bold;
+}
+
+.day-item.spec-20FT .item-container {
+    color: #000000;
+    font-weight: bold;
+}
+
+.day-item.spec-LCL .item-container {
+    color: #dc3545;
+    font-weight: bold;
+}
+
+.day-item.shape-bulk .item-container {
+    color: #dc3545;
+    font-weight: 900;
+}
+
+/* 드래그 앤 드롭 스타일 */
+.day-item {
+    cursor: move;
+    user-select: none;
+}
+
+.day-item.dragging {
+    opacity: 0.5;
+    transform: rotate(5deg);
+    z-index: 1000;
+    position: relative;
+}
+
+.weekly-box.drag-over {
+    background-color: #e3f2fd;
+    border: 2px dashed #2196f3;
+}
+
+.day-content.drag-over {
+    background-color: #f3e5f5;
+    border: 2px dashed #9c27b0;
 }
 
 .product-item {
@@ -722,6 +1141,27 @@ tbody tr:hover {
     color: #e74c3c;
     font-weight: bold;
     font-size: 10px;
+}
+
+.item-shipper {
+    font-weight: bold;
+    color: #495057;
+    font-size: 100%;
+    grid-column: 1;
+}
+
+.item-product {
+    color: #6c757d;
+    font-size: 90%;
+    grid-column: 2;
+}
+
+.item-container {
+    color: #007bff;
+    font-weight: bold;
+    font-size: 85%;
+    grid-column: 3;
+    text-align: right;
 }
 
 .shipper-item {

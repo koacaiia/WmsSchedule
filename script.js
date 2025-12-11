@@ -53,7 +53,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // 전역 정렬 상태 관리
 let currentSortColumn = null;
-let currentSortDirection = null; // 'asc' or 'desc'
+let currentSortDirection = 'asc'; // 'asc' or 'desc'
 
 // 테이블 정렬 기능 (개선된 버전)
 function sortTable(columnIndex) {
@@ -1268,6 +1268,9 @@ async function loadDataFromDatabase() {
 
 // 전역 변수로 모든 데이터 저장
 let allInCargoData = [];
+let filteredData = []; // 필터링된 데이터를 저장하는 배열
+let draggedItem = null;
+let draggedItemData = null;
 
 // 날짜 범위 계산 함수
 function getDateRange(period) {
@@ -1403,29 +1406,44 @@ function filterByCustomDateRange() {
 }
 
 // 필터링된 데이터를 테이블에 표시
-function displayFilteredData(filteredData, periodDescription) {
+function displayFilteredData(data, periodDescription) {
+    console.log('📋 displayFilteredData 호출됨:', {
+        dataLength: data.length,
+        periodDescription,
+        sampleData: data.length > 0 ? data[0] : null
+    });
+    
+    // 전역 filteredData 업데이트
+    filteredData = [...data];
+    
     const tableBody = document.querySelector('#containerTable tbody');
+    if (!tableBody) {
+        console.error('❌ 테이블 tbody를 찾을 수 없습니다!');
+        return;
+    }
+    
     tableBody.innerHTML = '';
     
     // 정렬 상태 초기화 (새로운 데이터 로드 시)
     currentSortColumn = null;
-    currentSortDirection = null;
-    updateSortHeaders(-1, null); // 모든 헤더 초기화
+    currentSortDirection = 'asc';
+    updateSortHeaders();
     
-    if (filteredData.length === 0) {
+    if (data.length === 0) {
         const noDataRow = tableBody.insertRow();
         noDataRow.innerHTML = `<td colspan="12" style="text-align: center; padding: 20px; color: #6c757d;">선택한 기간(${periodDescription})에 해당하는 데이터가 없습니다.</td>`;
+        console.log('ℹ️ 데이터가 없어서 안내 메시지 표시');
         return;
     }
     
-    filteredData.forEach((item, index) => {
+    data.forEach((item, index) => {
         const record = item.data;
         const newRow = tableBody.insertRow();
         
         newRow.innerHTML = `
             <td>${index + 1}</td>
             <td>${record.date || '-'}</td>
-            <td>${record.shipper ||record.consignee|| '-'}</td>
+            <td>${record.shipper || record.consignee || '-'}</td>
             <td><strong>${record.container || '-'}</strong></td>
             <td>${record.count || record.seal || '-'}</td>
             <td>${record.bl || '-'}</td>
@@ -1447,6 +1465,104 @@ function displayFilteredData(filteredData, periodDescription) {
     
     // 데이터 업데이트 후 헤더 고정 재적용
     setTimeout(enforceFixedHeader, 50);
+    
+    // 화주 select 업데이트
+    updateTableShipperSelect(data);
+}
+
+// 테이블 화주 select 업데이트 함수
+function updateTableShipperSelect(data) {
+    const shipperSelect = document.getElementById('shipperFilterSelect');
+    if (!shipperSelect) return;
+    
+    const currentValue = shipperSelect.value; // 현재 선택값 보존
+    
+    // 기존 옵션 제거 (전체 화주 제외)
+    while (shipperSelect.children.length > 1) {
+        shipperSelect.removeChild(shipperSelect.lastChild);
+    }
+    
+    // 화주명 목록 추출
+    const shippers = new Set();
+    data.forEach(item => {
+        const shipper = item.data.consignee || item.data.shipper;
+        if (shipper && shipper.trim()) {
+            shippers.add(shipper.trim());
+        }
+    });
+    
+    // 화주명을 알파벳순으로 정렬하여 옵션 추가
+    Array.from(shippers).sort().forEach(shipper => {
+        const option = document.createElement('option');
+        option.value = shipper;
+        option.textContent = shipper;
+        shipperSelect.appendChild(option);
+    });
+    
+    // 이전 선택값 복원 (존재하는 경우)
+    if (currentValue && Array.from(shippers).includes(currentValue)) {
+        shipperSelect.value = currentValue;
+    }
+    
+    console.log(`📋 테이블 화주 select 업데이트: ${shippers.size}개 화주`);
+}
+
+// 테이블 화주 필터링 함수
+function filterTableByShipper() {
+    const selectedShipper = document.getElementById('shipperFilterSelect').value;
+    console.log('🔍 테이블 화주 필터링:', selectedShipper || '전체');
+    
+    let dataToShow;
+    let description;
+    
+    if (!selectedShipper) {
+        // 전체 화주 선택 시 현재 필터된 데이터 표시
+        dataToShow = filteredData;
+        description = '전체 화주';
+    } else {
+        // 특정 화주 선택 시 해당 화주 데이터만 필터링
+        dataToShow = filteredData.filter(item => {
+            const shipper = item.data.consignee || item.data.shipper || '';
+            return shipper === selectedShipper;
+        });
+        description = `화주: ${selectedShipper}`;
+    }
+    
+    // 테이블 업데이트 (화주 select는 업데이트하지 않음)
+    const tableBody = document.querySelector('#containerTable tbody');
+    tableBody.innerHTML = '';
+    
+    if (dataToShow.length === 0) {
+        const noDataRow = tableBody.insertRow();
+        noDataRow.innerHTML = `<td colspan="12" style="text-align: center; padding: 20px; color: #6c757d;">${description}에 해당하는 데이터가 없습니다.</td>`;
+        return;
+    }
+    
+    dataToShow.forEach((item, index) => {
+        const record = item.data;
+        const newRow = tableBody.insertRow();
+        
+        newRow.innerHTML = `
+            <td>${index + 1}</td>
+            <td>${record.date || '-'}</td>
+            <td>${record.shipper || record.consignee || '-'}</td>
+            <td><strong>${record.container || '-'}</strong></td>
+            <td>${record.count || record.seal || '-'}</td>
+            <td>${record.bl || '-'}</td>
+            <td>${record.description || record.itemName || '-'}</td>
+            <td>${record.qtyEa || '-'}</td>
+            <td>${record.qtyPlt || '-'}</td>
+            <td>${record.spec || '-'}</td>
+            <td>${record.shape || '-'}</td>
+            <td>${record.remark || '-'}</td>
+        `;
+        
+        // 데이터 속성 추가
+        newRow.setAttribute('data-record-path', item.path);
+        newRow.setAttribute('data-record-key', item.key);
+    });
+    
+    console.log(`📋 화주 필터링 완료: ${dataToShow.length}개 레코드 표시 (${description})`);
 }
 
 // 전체 데이터 보기
@@ -1508,13 +1624,26 @@ function generateWeeklySummaryReport() {
     try {
         // 이번주 날짜 범위 계산
         const weekRange = getDateRange('thisWeek');
-        const weekData = allInCargoData.filter(item => {
+        let weekData = allInCargoData.filter(item => {
             const recordDate = item.data.date;
             return isDateInRange(recordDate, weekRange.start, weekRange.end);
         });
         
         console.log(`📅 이번주 데이터 범위: ${weekRange.start.toLocaleDateString()} ~ ${weekRange.end.toLocaleDateString()}`);
         console.log(`📦 이번주 화물 데이터: ${weekData.length}건`);
+        
+        // 화주명 목록 생성 및 select 업데이트
+        updateShipperSelect(weekData);
+        
+        // 선택된 화주로 필터링
+        const selectedShipper = document.getElementById('shipperSelect').value;
+        if (selectedShipper) {
+            weekData = weekData.filter(item => {
+                const shipper = item.data.consignee || item.data.shipper || '';
+                return shipper === selectedShipper;
+            });
+            console.log(`📋 화주 필터링 후: ${weekData.length}건 (${selectedShipper})`);
+        }
         
         // 주차 계산
         const weekNumber = getWeekNumber(weekRange.start);
@@ -1526,6 +1655,49 @@ function generateWeeklySummaryReport() {
         console.error('❌ 주간요약 생성 오류:', error);
         alert('주간요약 생성 중 오류가 발생했습니다: ' + error.message);
     }
+}
+
+// 화주명 select 업데이트 함수
+function updateShipperSelect(weekData) {
+    const shipperSelect = document.getElementById('shipperSelect');
+    const currentValue = shipperSelect.value; // 현재 선택값 보존
+    
+    // 기존 옵션 제거 (전체 화주 제외)
+    while (shipperSelect.children.length > 1) {
+        shipperSelect.removeChild(shipperSelect.lastChild);
+    }
+    
+    // 화주명 목록 추출
+    const shippers = new Set();
+    weekData.forEach(item => {
+        const shipper = item.data.consignee || item.data.shipper;
+        if (shipper && shipper.trim()) {
+            shippers.add(shipper.trim());
+        }
+    });
+    
+    // 화주명을 알파벳순으로 정렬하여 옵션 추가
+    Array.from(shippers).sort().forEach(shipper => {
+        const option = document.createElement('option');
+        option.value = shipper;
+        option.textContent = shipper;
+        shipperSelect.appendChild(option);
+    });
+    
+    // 이전 선택값 복원 (존재하는 경우)
+    if (currentValue && Array.from(shippers).includes(currentValue)) {
+        shipperSelect.value = currentValue;
+    }
+    
+    console.log(`📋 화주명 select 업데이트: ${shippers.size}개 화주`);
+}
+
+// 화주명 필터링 함수
+function filterByShipper() {
+    console.log('🔍 화주명 필터링 시작...');
+    
+    // 주간요약 리포트 재생성 (필터링 적용)
+    generateWeeklySummaryReport();
 }
 
 // 3x2 그리드 데이터 생성 함수
@@ -1547,13 +1719,20 @@ function generateWeeklyGridData(weekData, weekRange) {
     console.log('고유 날짜들:', Array.from(allDates).sort());
     console.log('=========================');
     
-    // 2025년 12월 1일(월)부터 시작하는 이번 주
+    // 현재 주간의 월~금 날짜 계산
+    const currentDate = new Date();
+    const currentDay = currentDate.getDay(); // 0=일요일, 1=월요일, ..., 6=토요일
+    
+    // 이번 주 월요일 날짜 계산
+    const monday = new Date(currentDate);
+    monday.setDate(currentDate.getDate() - (currentDay === 0 ? 6 : currentDay - 1));
+    
     const days = [
-        { name: '월', elementId: 'mondayContent', date: new Date(2025, 11, 1) },
-        { name: '화', elementId: 'tuesdayContent', date: new Date(2025, 11, 2) },
-        { name: '수', elementId: 'wednesdayContent', date: new Date(2025, 11, 3) },
-        { name: '목', elementId: 'thursdayContent', date: new Date(2025, 11, 4) },
-        { name: '금', elementId: 'fridayContent', date: new Date(2025, 11, 5) }
+        { name: '월', elementId: 'mondayContent', date: new Date(monday) },
+        { name: '화', elementId: 'tuesdayContent', date: new Date(monday.getTime() + 1 * 24 * 60 * 60 * 1000) },
+        { name: '수', elementId: 'wednesdayContent', date: new Date(monday.getTime() + 2 * 24 * 60 * 60 * 1000) },
+        { name: '목', elementId: 'thursdayContent', date: new Date(monday.getTime() + 3 * 24 * 60 * 60 * 1000) },
+        { name: '금', elementId: 'fridayContent', date: new Date(monday.getTime() + 4 * 24 * 60 * 60 * 1000) }
     ];
     
     days.forEach(day => {
@@ -1562,6 +1741,22 @@ function generateWeeklyGridData(weekData, weekRange) {
         const month = String(day.date.getMonth() + 1).padStart(2, '0');
         const dayNum = String(day.date.getDate()).padStart(2, '0');
         const dateStr = `${year}-${month}-${dayNum}`;
+        
+        // 헤더에 날짜 업데이트
+        const dayIdMap = {
+            '월': 'monday',
+            '화': 'tuesday', 
+            '수': 'wednesday',
+            '목': 'thursday',
+            '금': 'friday'
+        };
+        const dayId = dayIdMap[day.name];
+        const dateElement = document.getElementById(`${dayId}Date`);
+        if (dateElement) {
+            const displayDate = `${month}/${dayNum}`;
+            dateElement.textContent = displayDate;
+            console.log(`📅 ${day.name}요일 헤더 날짜 업데이트: ${displayDate}`);
+        }
         
         console.log(`\n=== ${day.name}요일 처리 ===`);
         console.log(`목표 날짜: ${dateStr}`);
@@ -1580,10 +1775,8 @@ function generateWeeklyGridData(weekData, weekRange) {
         
         console.log(`${day.name}요일 데이터 ${dayData.length}개 발견`);
         
-        // 화주별로 그룹화
-        const shipperGroups = groupByShipper(dayData);
-        console.log(`${day.name}요일 그룹화 결과:`, shipperGroups);
-        populateDayBox(day.name, shipperGroups);
+        // 개별 항목으로 표시하도록 dayData를 직접 전달
+        populateDayBoxWithItems(day.name, dayData, dateStr);
     });
     
     // 주간 합계 박스 채우기
@@ -1707,60 +1900,867 @@ function populateDayBox(dayName, shipperGroups) {
     
     let html = '';
     
-    // 화주별 데이터 표시 (마우스 오버 시 툴팁으로 품명별 상세 표시)
-    shipperGroups.forEach((shipperGroup, index) => {
-        const containerCount = shipperGroup.totalContainers.size;
-        const tooltipId = `tooltip_${dayName}_${index}`;
+    // 개별 항목별로 표시 (화주명, 품명, 컨테이너 번호, Shape)
+    const dayData = weekData.filter(item => {
+        const itemDate = item.data.date;
+        const year = new Date().getFullYear();
+        const month = String(new Date().getMonth() + 1).padStart(2, '0');
+        const dayNum = String(new Date().getDate()).padStart(2, '0');
+        const todayStr = `${year}-${month}-${dayNum}`;
+        return itemDate === todayStr; // 임시로 오늘 날짜 사용
+    });
+    
+    dayData.forEach((item, index) => {
+        const record = item.data;
+        const shipper = record.consignee || record.shipper || '미분류';
+        const product = record.description || record.itemName || '미분류';
+        const container = record.container || 'N/A';
+        const spec = record.spec || '';
+        const shape = record.shape || '';
         
-        // 품명별 상세 데이터 생성
-        let tooltipContent = '';
-        Object.values(shipperGroup.products).forEach(product => {
-            const productContainerCount = product.containers.size;
-            let productQuantity = '';
-            if (product.totalQtyEa > 0 && product.totalQtyPlt > 0) {
-                productQuantity = `${product.totalQtyEa}EA / ${product.totalQtyPlt}PLT`;
-            } else if (product.totalQtyEa > 0) {
-                productQuantity = `${product.totalQtyEa}EA`;
-            } else if (product.totalQtyPlt > 0) {
-                productQuantity = `${product.totalQtyPlt}PLT`;
-            } else {
-                productQuantity = `${productContainerCount}CTR`;
-            }
-            
-            tooltipContent += `
-                <div class="tooltip-item">
-                    <span class="tooltip-product">・${product.itemName}</span>
-                    <span class="tooltip-spec">[${product.spec}]</span>
-                    <span class="tooltip-quantity">${productQuantity}</span>
-                </div>
-            `;
-        });
+        // 조건부 클래스 추가
+        let itemClass = 'day-item';
+        if (spec === '40FT') {
+            itemClass += ' spec-40 spec-40FT';
+        } else if (spec === '20FT') {
+            itemClass += ' spec-20FT';
+        } else if (spec === 'LCL') {
+            itemClass += ' spec-LCL';
+        }
+        if (shape === 'Bulk') {
+            itemClass += ' shape-bulk';
+        }
         
-        // 화주 아이템 (마우스 오버 이벤트 포함)
         html += `
-            <div class="day-item shipper-item" 
-                 onmouseenter="showTooltip(event, '${tooltipId}')" 
-                 onmouseleave="hideTooltip()" 
-                 onmousemove="updateTooltipPosition(event, '${tooltipId}')"
-                 data-tooltip-id="${tooltipId}">
-                <div class="item-info">
-                    <div class="item-shipper">${shipperGroup.shipper} (${containerCount}CTR)</div>
-                </div>
-            </div>
-        `;
-        
-        // 툴팁 요소 추가
-        html += `
-            <div class="tooltip" id="${tooltipId}" style="display: none;">
-                <div class="tooltip-header">📦 ${shipperGroup.shipper} 상세 내역</div>
-                <div class="tooltip-content">
-                    ${tooltipContent}
-                </div>
+            <div class="${itemClass}">
+                <div class="item-shipper">${shipper}</div>
+                <div class="item-product">${product}</div>
+                <div class="item-container">${container}</div>
+                <div class="item-shape">${shape || 'N/A'}</div>
             </div>
         `;
     });
     
     contentElement.innerHTML = html;
+}
+
+// 개별 항목으로 요일 박스 채우기 (화주명, 품명, 컨테이너 번호, Spec)
+function populateDayBoxWithItems(dayName, dayData, dateStr) {
+    // 요일명을 영어 ID로 변환
+    const dayIdMap = {
+        '월': 'monday',
+        '화': 'tuesday', 
+        '수': 'wednesday',
+        '목': 'thursday',
+        '금': 'friday'
+    };
+    
+    const elementId = dayIdMap[dayName] + 'Content';
+    const contentElement = document.getElementById(elementId);
+    
+    if (!contentElement) {
+        console.error(`요소를 찾을 수 없습니다: ${elementId}`);
+        return;
+    }
+    
+    if (!dayData || dayData.length === 0) {
+        contentElement.innerHTML = '<div class="no-data">입고된 화물이 없습니다.</div>';
+        return;
+    }
+    
+    let html = '';
+    
+    // 개별 항목별로 표시 (화주명, 품명, 컨테이너 번호, Spec)
+    dayData.forEach((item, index) => {
+        const record = item.data;
+        let shipper = record.consignee || record.shipper || '미분류';
+        
+        // consignee 값에서 괄호 안의 값만 추출
+        const parenthesesMatch = shipper.match(/\(([^)]+)\)/);
+        if (parenthesesMatch) {
+            shipper = parenthesesMatch[1];
+        }
+        
+        const product = record.description || record.itemName || '미분류';
+        const container = record.container || 'N/A';
+        const spec = record.spec || '';
+        const shape = record.shape || '';
+        
+        // 조건부 클래스 추가
+        let itemClass = 'day-item';
+        if (spec === '40FT') {
+            itemClass += ' spec-40 spec-40FT';
+        } else if (spec === '20FT') {
+            itemClass += ' spec-20FT';
+        } else if (spec === 'LCL') {
+            itemClass += ' spec-LCL';
+        }
+        if (shape === 'Bulk') {
+            itemClass += ' shape-bulk';
+        }
+        
+        html += `
+            <div class="${itemClass}">
+                <div class="item-shipper">${shipper}</div>
+                <div class="item-product">${product}</div>
+                <div class="item-container">${container}</div>
+                <div class="item-spec">${spec || 'N/A'}</div>
+            </div>
+        `;
+    });
+    
+    contentElement.innerHTML = html;
+    
+    // 헤더에 화주별 요약 표시
+    generateDayHeaderSummary(dayName, dayData);
+    
+    // 드래그 앤 드롭 이벤트 리스너 추가
+    setTimeout(() => {
+        addDragAndDropListeners();
+        addWeeklyBoxMouseEvents();
+    }, 100);
+}
+
+// 요일별 화주 요약 생성
+function generateDaySummary(dayName, dayData) {
+    const dayIdMap = {
+        '월': 'monday',
+        '화': 'tuesday', 
+        '수': 'wednesday',
+        '목': 'thursday',
+        '금': 'friday'
+    };
+    
+    const summaryElementId = dayIdMap[dayName] + 'Sum';
+    const summaryElement = document.getElementById(summaryElementId);
+    
+    if (!summaryElement) {
+        console.error(`요약 요소를 찾을 수 없습니다: ${summaryElementId}`);
+        return;
+    }
+    
+    const summaryListElement = summaryElement.querySelector('.summary-list');
+    
+    if (!dayData || dayData.length === 0) {
+        summaryListElement.innerHTML = '<div style="text-align: center; color: #6c757d; font-size: 8px; padding: 10px;">데이터 없음</div>';
+        return;
+    }
+    
+    // 화주별, Spec별 컨테이너 수 집계
+    const shipperSpecCounts = {};
+    const specTotals = {};
+    
+    dayData.forEach(item => {
+        const record = item.data;
+        let shipper = record.consignee || record.shipper || '미분류';
+        
+        // consignee 값에서 괄호 안의 값만 추출
+        const parenthesesMatch = shipper.match(/\(([^)]+)\)/);
+        if (parenthesesMatch) {
+            shipper = parenthesesMatch[1];
+        }
+        
+        const spec = record.spec || '미분류';
+        const container = record.container || '';
+        
+        if (!shipperSpecCounts[shipper]) {
+            shipperSpecCounts[shipper] = {};
+        }
+        
+        if (!shipperSpecCounts[shipper][spec]) {
+            shipperSpecCounts[shipper][spec] = new Set();
+        }
+        
+        if (!specTotals[spec]) {
+            specTotals[spec] = new Set();
+        }
+        
+        if (container) {
+            shipperSpecCounts[shipper][spec].add(container);
+            specTotals[spec].add(container);
+        }
+    });
+    
+    // 화주별로 컨테이너 총 수 계산하여 정렬
+    const shipperTotalCounts = {};
+    Object.keys(shipperSpecCounts).forEach(shipper => {
+        const allContainers = new Set();
+        Object.values(shipperSpecCounts[shipper]).forEach(containers => {
+            containers.forEach(container => allContainers.add(container));
+        });
+        shipperTotalCounts[shipper] = allContainers.size;
+    });
+    
+    const sortedShippers = Object.entries(shipperTotalCounts)
+        .sort((a, b) => b[1] - a[1]);
+    
+    // HTML 생성
+    let summaryHtml = '';
+    
+    // 화주별 spec 구분 표시
+    sortedShippers.forEach(([shipper, totalCount]) => {
+        summaryHtml += `
+            <div class="summary-shipper">
+                <div class="shipper-header">
+                    <span class="shipper-name">${shipper}</span>
+                    <span class="container-count">${totalCount}</span>
+                </div>
+        `;
+        
+        // 해당 화주의 spec별 컨테이너 수
+        const shipperSpecs = Object.entries(shipperSpecCounts[shipper])
+            .sort((a, b) => b[1].size - a[1].size);
+        
+        shipperSpecs.forEach(([spec, containers]) => {
+            summaryHtml += `
+                <div class="spec-item">
+                    <span class="spec-name">${spec}</span>
+                    <span class="spec-count">${containers.size}</span>
+                </div>
+            `;
+        });
+        
+        summaryHtml += '</div>';
+    });
+    
+    // 총 spec별 컨테이너 수량 합계
+    const sortedSpecs = Object.entries(specTotals)
+        .sort((a, b) => b[1].size - a[1].size);
+    
+    if (sortedSpecs.length > 0) {
+        summaryHtml += `
+            <div class="spec-totals">
+                <div class="totals-header">전체 합계</div>
+        `;
+        
+        sortedSpecs.forEach(([spec, containers]) => {
+            summaryHtml += `
+                <div class="total-item">
+                    <span class="total-spec">${spec}</span>
+                    <span class="total-count">${containers.size}</span>
+                </div>
+            `;
+        });
+        
+        summaryHtml += '</div>';
+    }
+    
+    // 요일별 요약 데이터를 전역 변수에 저장 (mouseover용)
+    const dayId = dayIdMap[dayName];
+    if (!window.daySummaryData) window.daySummaryData = {};
+    window.daySummaryData[dayId] = summaryHtml;
+    
+    // 헤더에 요약 정보 표시 (화주별)
+    generateDayHeaderSummary(dayName, dayData);
+}
+
+// 요일별 푸터 전체 합계 생성
+function generateDayFooter(dayName, specTotals) {
+    const dayIdMap = {
+        '월': 'monday',
+        '화': 'tuesday', 
+        '수': 'wednesday',
+        '목': 'thursday',
+        '금': 'friday'
+    };
+    
+    const footerElementId = dayIdMap[dayName] + 'Footer';
+    const footerElement = document.getElementById(footerElementId);
+    
+    if (!footerElement) {
+        console.error(`푸터 요소를 찾을 수 없습니다: ${footerElementId}`);
+        return;
+    }
+    
+    const footerTotalsElement = footerElement.querySelector('.footer-totals');
+    
+    if (!specTotals || Object.keys(specTotals).length === 0) {
+        footerTotalsElement.innerHTML = '';
+        return;
+    }
+    
+    // Spec별 컨테이너 수량을 푸터에 표시
+    const sortedSpecs = Object.entries(specTotals)
+        .sort((a, b) => b[1].size - a[1].size);
+    
+    let footerHtml = '';
+    sortedSpecs.forEach(([spec, containers]) => {
+        footerHtml += `<span class="footer-spec">${spec}: ${containers.size}</span>`;
+    });
+    
+    footerTotalsElement.innerHTML = footerHtml;
+}
+
+// 요일 박스 마우스 오버 이벤트 추가
+function addWeeklyBoxMouseEvents() {
+    const weeklyBoxes = document.querySelectorAll('.weekly-box:not(.total-box)');
+    
+    weeklyBoxes.forEach(box => {
+        box.addEventListener('mouseenter', function() {
+            const boxId = this.id.replace('Box', ''); // mondayBox -> monday
+            if (window.daySummaryData && window.daySummaryData[boxId]) {
+                showDaySummaryInTotal(window.daySummaryData[boxId]);
+            }
+        });
+        
+        box.addEventListener('mouseleave', function() {
+            // 마우스가 떠나면 원래 주간 합계로 복원
+            if (window.weeklyTotalData) {
+                const totalSummaryList = document.querySelector('#totalSum .summary-list');
+                if (totalSummaryList) {
+                    totalSummaryList.innerHTML = window.weeklyTotalData;
+                }
+            }
+        });
+    });
+}
+
+// 요일별 요약을 주간합계 창에 표시
+function showDaySummaryInTotal(summaryHtml) {
+    const totalSummaryList = document.querySelector('#totalSum .summary-list');
+    if (totalSummaryList) {
+        totalSummaryList.innerHTML = summaryHtml;
+    }
+}
+
+// 주간 합계 버튼 클릭시 원래 주간 합계 표시
+function showWeeklyTotal() {
+    if (window.weeklyTotalData) {
+        const totalSummaryList = document.querySelector('#totalSum .summary-list');
+        if (totalSummaryList) {
+            totalSummaryList.innerHTML = window.weeklyTotalData;
+        }
+    }
+}
+
+// 드래그 앤 드롭 기능 구현
+function addDragAndDropListeners() {
+    console.log('🔧 드래그 앤 드롭 리스너 추가 시작...');
+    
+    // 기존 리스너 제거 (중복 방지)
+    document.querySelectorAll('.day-item').forEach(item => {
+        item.removeEventListener('dragstart', handleDragStart);
+        item.removeEventListener('dragend', handleDragEnd);
+    });
+    
+    document.querySelectorAll('.day-content').forEach(content => {
+        content.removeEventListener('dragover', handleDragOver);
+        content.removeEventListener('drop', handleDrop);
+        content.removeEventListener('dragenter', handleDragEnter);
+        content.removeEventListener('dragleave', handleDragLeave);
+    });
+    
+    // 모든 day-item에 드래그 가능 속성 추가
+    const dayItems = document.querySelectorAll('.day-item');
+    console.log(`👆 ${dayItems.length}개의 day-item 발견`);
+    
+    dayItems.forEach((item, index) => {
+        item.draggable = true;
+        item.addEventListener('dragstart', handleDragStart);
+        item.addEventListener('dragend', handleDragEnd);
+        console.log(`✅ Day-item ${index + 1} 드래그 설정 완료`);
+    });
+    
+    // 모든 day-content와 weekly-box에 드롭 영역 설정
+    const dayContents = document.querySelectorAll('.day-content');
+    const weeklyBoxes = document.querySelectorAll('.weekly-box');
+    
+    console.log(`📦 ${dayContents.length}개의 day-content 발견`);
+    console.log(`📦 ${weeklyBoxes.length}개의 weekly-box 발견`);
+    
+    // day-content 영역에 드롭 이벤트 추가
+    dayContents.forEach((content, index) => {
+        content.addEventListener('dragover', handleDragOver);
+        content.addEventListener('drop', handleDrop);
+        content.addEventListener('dragenter', handleDragEnter);
+        content.addEventListener('dragleave', handleDragLeave);
+        console.log(`✅ Day-content ${index + 1} (${content.id}) 드롭 설정 완료`);
+    });
+    
+    // weekly-box 영역에도 드롭 이벤트 추가 (보조 드롭 영역)
+    weeklyBoxes.forEach((box, index) => {
+        box.addEventListener('dragover', handleDragOver);
+        box.addEventListener('drop', handleDropOnBox);
+        box.addEventListener('dragenter', handleDragEnter);
+        box.addEventListener('dragleave', handleDragLeave);
+        console.log(`✅ Weekly-box ${index + 1} 드롭 설정 완료`);
+    });
+    
+    console.log('✅ 모든 드래그 앤 드롭 리스너 추가 완료');
+}
+
+function handleDragStart(e) {
+    draggedItem = this;
+    this.classList.add('dragging');
+    
+    // 드래그된 아이템의 데이터 추출
+    const shipper = this.querySelector('.item-shipper').textContent;
+    const product = this.querySelector('.item-product').textContent;
+    const container = this.querySelector('.item-container').textContent;
+    const spec = this.querySelector('.item-spec').textContent;
+    
+    console.log('🔄 드래그 시작:', {
+        container: container,
+        shipper: shipper,
+        product: product,
+        spec: spec
+    });
+    
+    // 드래그 데이터를 더 확실하게 저장
+    draggedItemData = {
+        container: container,
+        shipper: shipper,
+        product: product,
+        spec: spec,
+        element: this,
+        originalDate: null // 나중에 Firebase에서 찾아서 설정
+    };
+    
+    // Firebase에서 해당 컨테이너 데이터 찾기
+    findContainerInFirebase(container, shipper, product, (data) => {
+        if (data) {
+            draggedItemData.firebaseData = data;
+            draggedItemData.originalDate = data.date;
+            console.log('✅ Firebase 데이터 찾기 성공:', data);
+        } else {
+            console.error('❌ Firebase에서 데이터를 찾을 수 없습니다');
+        }
+    });
+    
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', container); // 브라우저 호환성을 위해
+}
+
+function handleDragEnd(e) {
+    this.classList.remove('dragging');
+    draggedItem = null;
+    
+    // 모든 드롭 영역의 하이라이트 제거
+    document.querySelectorAll('.day-content').forEach(content => {
+        content.classList.remove('drag-over');
+    });
+}
+
+function handleDragOver(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // 드롭 효과 설정
+    if (e.dataTransfer) {
+        e.dataTransfer.dropEffect = 'move';
+    }
+    
+    console.log('📎 DragOver 이벤트:', this.id || this.className);
+    return false; // 추가 방지 대첱
+}
+
+function handleDragEnter(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    this.classList.add('drag-over');
+    console.log('📬 DragEnter:', this.id || this.className);
+    
+    return false;
+}
+
+function handleDragLeave(e) {
+    // 자식 요소로 이동할 때는 클래스를 제거하지 않음
+    if (!this.contains(e.relatedTarget)) {
+        this.classList.remove('drag-over');
+    }
+}
+
+function handleDrop(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    this.classList.remove('drag-over');
+    
+    console.log('📦 드롭 이벤트 발생:', {
+        dropTarget: this.id,
+        className: this.className,
+        draggedItem: draggedItem ? 'exists' : 'null',
+        draggedItemData: draggedItemData ? 'exists' : 'null'
+    });
+    
+    return handleDropLogic(e, this);
+}
+
+// weekly-box에 대한 드롭 핸들러
+function handleDropOnBox(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    this.classList.remove('drag-over');
+    
+    console.log('📦 Weekly-box 드롭 이벤트:', {
+        dropTarget: this.className,
+        draggedItem: draggedItem ? 'exists' : 'null'
+    });
+    
+    // box-header에서 요일 정보 추출
+    const boxHeader = this.querySelector('.box-header');
+    if (boxHeader) {
+        const dayNameElement = boxHeader.querySelector('.day-name');
+        if (dayNameElement) {
+            const dayText = dayNameElement.textContent.trim();
+            // 요일 매핑
+            const dayMap = {
+                '월요일': 'monday',
+                '화요일': 'tuesday',
+                '수요일': 'wednesday',
+                '목요일': 'thursday',
+                '금요일': 'friday'
+            };
+            
+            const targetDay = dayMap[dayText];
+            if (targetDay) {
+                // 해당 요일의 day-content 찾기
+                const targetContent = document.getElementById(targetDay + 'Content');
+                if (targetContent) {
+                    return handleDropLogic(e, targetContent);
+                }
+            }
+        }
+    }
+    
+    console.error('❌ Weekly-box에서 요일 정보를 찾을 수 없습니다.');
+    return false;
+}
+
+// 공통 드롭 로직
+function handleDropLogic(e, targetElement) {
+    console.log('🔄 드롭 로직 시작:', targetElement.id);
+    
+    if (!draggedItem) {
+        console.error('❌ 드래그된 아이템이 없습니다.');
+        alert('드래그된 아이템이 없습니다. 다시 시도해주세요.');
+        return false;
+    }
+    
+    if (!draggedItemData) {
+        console.error('❌ 드래그된 데이터가 없습니다.');
+        alert('드래그된 데이터가 없습니다. 다시 시도해주세요.');
+        return false;
+    }
+    
+    // 드롭된 영역의 요일 확인
+    const dayContentId = targetElement.id;
+    const targetDay = dayContentId.replace('Content', '');
+    
+    console.log('🎯 드롭 대상 요일:', targetDay);
+    
+    // 요일을 한글로 변환
+    const dayMap = {
+        'monday': '월',
+        'tuesday': '화',
+        'wednesday': '수',
+        'thursday': '목',
+        'friday': '금'
+    };
+    
+    const targetDayKorean = dayMap[targetDay];
+    if (!targetDayKorean) {
+        console.error('❌ 유효하지 않은 요일:', targetDay);
+        alert(`유효하지 않은 요일: ${targetDay}`);
+        return false;
+    }
+    
+    // 새로운 날짜 계산
+    const newDate = calculateDateForDay(targetDayKorean);
+    
+    if (!newDate) {
+        console.error('❌ 날짜 계산 실패');
+        alert('날짜 계산에 실패했습니다.');
+        return false;
+    }
+    
+    console.log(`📅 ${draggedItemData.container}를 ${targetDayKorean}요일(${newDate})로 이동`);
+    
+    // Firebase 데이터 확인
+    if (draggedItemData.firebaseData && draggedItemData.firebaseData.key) {
+        // Firebase에서 날짜 업데이트
+        updateContainerDate(draggedItemData.firebaseData.key, newDate, () => {
+            console.log('✅ 날짜 업데이트 완료, 새로고침 중...');
+            alert(`${draggedItemData.container}가 ${targetDayKorean}요일로 이동되었습니다!`);
+            // 데이터 새로고침
+            loadWeeklyData();
+        });
+    } else {
+        console.error('❌ Firebase 데이터가 없어 업데이트할 수 없습니다.');
+        alert('컨테이너 데이터를 Firebase에서 찾을 수 없어 업데이트할 수 없습니다.');
+    }
+    
+    return true;
+}
+
+// Firebase에서 컨테이너 데이터 찾기
+function findContainerInFirebase(container, shipper, product, callback) {
+    if (!window.firebaseDb) {
+        console.error('❌ Firebase 데이터베이스가 초기화되지 않았습니다.');
+        callback(null);
+        return;
+    }
+    
+    console.log('🔍 Firebase에서 컨테이너 데이터 검색 시작:', { container, shipper, product });
+    
+    // 전체 InCargo 데이터에서 검색
+    const inCargoRef = window.firebaseRef(window.firebaseDb, 'DeptName/WareHouseDept2/InCargo');
+    window.firebaseOnValue(inCargoRef, (snapshot) => {
+        if (snapshot.exists()) {
+            const data = snapshot.val();
+            console.log('📊 InCargo 데이터 존재 확인됨');
+            
+            // 깊이 검색으로 실제 데이터 찾기
+            function findInData(obj, path = '') {
+                if (obj === null || obj === undefined) return null;
+                
+                if (typeof obj === 'object' && !Array.isArray(obj)) {
+                    const keys = Object.keys(obj);
+                    
+                    for (const key of keys) {
+                        const currentPath = path ? `${path}/${key}` : key;
+                        const value = obj[key];
+                        
+                        if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+                            // 이것이 실제 데이터 레코드인지 확인
+                            const hasNestedObjects = Object.values(value).some(v => 
+                                typeof v === 'object' && v !== null && !Array.isArray(v)
+                            );
+                            
+                            if (!hasNestedObjects && value.container) {
+                                // 컨테이너 매칭 확인
+                                const containerMatch = value.container === container;
+                                const shipperMatch = (value.consignee === shipper || value.shipper === shipper);
+                                const productMatch = (value.description === product || value.itemName === product);
+                                
+                                console.log(`🔎 데이터 검사: ${currentPath}`, {
+                                    container: value.container,
+                                    consignee: value.consignee,
+                                    description: value.description,
+                                    containerMatch,
+                                    shipperMatch,
+                                    productMatch
+                                });
+                                
+                                if (containerMatch && shipperMatch && productMatch) {
+                                    console.log('✅ 매칭되는 데이터 발견!');
+                                    return { key: currentPath, ...value };
+                                }
+                            } else {
+                                // 더 깊이 탐색
+                                const result = findInData(value, currentPath);
+                                if (result) return result;
+                            }
+                        }
+                    }
+                }
+                return null;
+            }
+            
+            const foundData = findInData(data);
+            if (foundData) {
+                console.log('✅ 컨테이너 데이터 찾기 성공:', foundData);
+                callback(foundData);
+            } else {
+                console.error('❌ 컨테이너를 찾을 수 없습니다:', container);
+                callback(null);
+            }
+        } else {
+            console.error('❌ InCargo 데이터가 없습니다.');
+            callback(null);
+        }
+    }, { onlyOnce: true });
+}
+
+// Firebase에서 컨테이너 날짜 업데이트
+function updateContainerDate(containerKey, newDate, callback) {
+    if (!window.firebaseDb) {
+        console.error('❌ Firebase 데이터베이스가 초기화되지 않았습니다.');
+        return;
+    }
+    
+    console.log('🔄 날짜 업데이트 시도:', containerKey, '→', newDate);
+    
+    // 전체 Firebase 경로 구성
+    const fullPath = `DeptName/WareHouseDept2/InCargo/${containerKey}`;
+    console.log('📍 전체 Firebase 경로:', fullPath);
+    
+    const containerRef = window.firebaseRef(window.firebaseDb, fullPath);
+    window.firebaseUpdate(containerRef, { date: newDate })
+        .then(() => {
+            console.log('✅ Firebase 업데이트 성공:', fullPath, newDate);
+            callback();
+        })
+        .catch((error) => {
+            console.error('❌ Firebase 업데이트 실패:', error);
+            alert(`날짜 업데이트 실패: ${error.message}`);
+        });
+}
+
+// 요일에 해당하는 날짜 계산 (현재 주간 기준)
+function calculateDateForDay(dayKorean) {
+    console.log('📅 날짜 계산 시작:', dayKorean);
+    
+    // 현재 주간의 월요일부터 금요일까지 날짜 계산
+    const currentDate = new Date();
+    const currentDay = currentDate.getDay(); // 0=일요일, 1=월요일, ..., 6=토요일
+    
+    // 이번 주 월요일 날짜 계산
+    const monday = new Date(currentDate);
+    monday.setDate(currentDate.getDate() - (currentDay === 0 ? 6 : currentDay - 1));
+    
+    // 한글 요일을 현재 주간 날짜로 매핑
+    const dayOffset = {
+        '월': 0,
+        '화': 1,
+        '수': 2,
+        '목': 3,
+        '금': 4
+    };
+    
+    const offset = dayOffset[dayKorean];
+    if (offset === undefined) {
+        console.error('❌ 유효하지 않은 요일:', dayKorean);
+        return null;
+    }
+    
+    // 해당 요일 날짜 계산
+    const targetDate = new Date(monday.getTime() + offset * 24 * 60 * 60 * 1000);
+    const dateStr = targetDate.toISOString().split('T')[0];
+    
+    console.log(`✅ ${dayKorean}요일 -> ${dateStr}`);
+    return dateStr;
+}
+
+// 테이블을 특정 데이터로 채우기 (정렬 시 사용)
+function populateContainerTable(data) {
+    const tableBody = document.querySelector('#containerTable tbody');
+    tableBody.innerHTML = '';
+    
+    if (data.length === 0) {
+        const noDataRow = tableBody.insertRow();
+        noDataRow.innerHTML = `<td colspan="12" style="text-align: center; padding: 20px; color: #6c757d;">표시할 데이터가 없습니다.</td>`;
+        return;
+    }
+    
+    data.forEach((item, index) => {
+        const record = item.data;
+        const newRow = tableBody.insertRow();
+        
+        // 각 셀에 데이터 추가
+        newRow.insertCell(0).textContent = index + 1; // 순번
+        newRow.insertCell(1).textContent = record.date || '';
+        newRow.insertCell(2).textContent = record.consignee || record.shipper || '';
+        newRow.insertCell(3).textContent = record.container || '';
+        newRow.insertCell(4).textContent = record.seal || '';
+        newRow.insertCell(5).textContent = record.bl || '';
+        newRow.insertCell(6).textContent = record.description || record.itemName || '';
+        newRow.insertCell(7).textContent = record.qtyEa || '';
+        newRow.insertCell(8).textContent = record.qtyPlt || '';
+        newRow.insertCell(9).textContent = record.spec || '';
+        newRow.insertCell(10).textContent = record.shape || '';
+        newRow.insertCell(11).textContent = record.remarks || '';
+        
+        // 행 클릭 이벤트 추가
+        newRow.style.cursor = 'pointer';
+        newRow.addEventListener('click', function() {
+            showRowDetails(record, item.key);
+        });
+    });
+}
+
+// 테이블 정렬 함수
+function sortTable(column) {
+    console.log('🔄 테이블 정렬:', column);
+    
+    // 같은 컬럼을 클릭하면 정렬 방향 변경
+    if (currentSortColumn === column) {
+        currentSortDirection = currentSortDirection === 'asc' ? 'desc' : 'asc';
+    } else {
+        currentSortColumn = column;
+        currentSortDirection = 'asc';
+    }
+    
+    // 헤더 스타일 업데이트
+    updateSortHeaders();
+    
+    // 데이터 정렬
+    const sortedData = [...filteredData].sort((a, b) => {
+        let aValue = getSortValue(a, column);
+        let bValue = getSortValue(b, column);
+        
+        // 날짜 정렬의 경우 Date 객체로 변환
+        if (column === 'date') {
+            aValue = new Date(aValue);
+            bValue = new Date(bValue);
+        }
+        
+        // 문자열 비교 (대소문자 구분 없음)
+        if (typeof aValue === 'string' && typeof bValue === 'string') {
+            aValue = aValue.toLowerCase();
+            bValue = bValue.toLowerCase();
+        }
+        
+        let result = 0;
+        if (aValue < bValue) result = -1;
+        if (aValue > bValue) result = 1;
+        
+        return currentSortDirection === 'desc' ? -result : result;
+    });
+    
+    // 정렬된 데이터로 테이블 다시 그리기
+    populateContainerTable(sortedData);
+}
+
+// 정렬용 값 추출 함수
+function getSortValue(item, column) {
+    const record = item.data;
+    
+    switch (column) {
+        case 'date':
+            return record.date || '';
+        case 'shipper':
+            return record.consignee || record.shipper || '';
+        case 'container':
+            return record.container || '';
+        case 'seal':
+            return record.seal || '';
+        case 'bl':
+            return record.bl || '';
+        case 'itemName':
+            return record.description || record.itemName || '';
+        default:
+            return '';
+    }
+}
+
+// 정렬 헤더 스타일 업데이트
+function updateSortHeaders() {
+    // 모든 헤더에서 정렬 클래스 제거
+    document.querySelectorAll('th.sortable').forEach(th => {
+        th.classList.remove('sort-asc', 'sort-desc');
+    });
+    
+    // 현재 정렬 컬럼에 클래스 추가
+    if (currentSortColumn) {
+        const header = document.querySelector(`th[data-column="${currentSortColumn}"]`);
+        if (header) {
+            header.classList.add(currentSortDirection === 'asc' ? 'sort-asc' : 'sort-desc');
+        }
+    }
+}
+
+// 주간 데이터 로드 함수
+function loadWeeklyData() {
+    console.log('🔄 주간 데이터 새로고침...');
+    
+    // 전체 데이터를 다시 로드하고 주간 요약 재생성
+    loadInCargoDataOnPageLoad().then(() => {
+        console.log('📅 데이터 로드 완료, 주간 요약 재생성 중...');
+        generateWeeklySummaryReport();
+    }).catch((error) => {
+        console.error('❌ 데이터 로드 실패:', error);
+    });
 }
 
 // 주간 합계 박스에 데이터 채우기
@@ -2047,6 +3047,381 @@ function generateWeeklyTotalSummary(weekData) {
             <td>${percentage}%</td>
         `;
     });
+    
+    // 주간 총합 화주별 요약 생성
+    generateTotalSummary(weekData);
+}
+
+// 주간 총합 화주별 요약 생성
+function generateTotalSummary(weekData) {
+    const summaryElement = document.getElementById('totalSum');
+    
+    if (!summaryElement) {
+        console.error('주간 총합 요약 요소를 찾을 수 없습니다: totalSum');
+        return;
+    }
+    
+    const summaryListElement = summaryElement.querySelector('.summary-list');
+    
+    if (!weekData || weekData.length === 0) {
+        summaryListElement.innerHTML = '<div style="text-align: center; color: #6c757d; font-size: 8px; padding: 10px;">데이터 없음</div>';
+        return;
+    }
+    
+    // 화주별, Spec별 컨테이너 수 집계
+    const shipperSpecCounts = {};
+    const specTotals = {};
+    
+    weekData.forEach(item => {
+        const record = item.data;
+        let shipper = record.consignee || record.shipper || '미분류';
+        
+        // consignee 값에서 괄호 안의 값만 추출
+        const parenthesesMatch = shipper.match(/\(([^)]+)\)/);
+        if (parenthesesMatch) {
+            shipper = parenthesesMatch[1];
+        }
+        
+        const spec = record.spec || '미분류';
+        const container = record.container || '';
+        
+        if (!shipperSpecCounts[shipper]) {
+            shipperSpecCounts[shipper] = {};
+        }
+        
+        if (!shipperSpecCounts[shipper][spec]) {
+            shipperSpecCounts[shipper][spec] = new Set();
+        }
+        
+        if (!specTotals[spec]) {
+            specTotals[spec] = new Set();
+        }
+        
+        if (container) {
+            shipperSpecCounts[shipper][spec].add(container);
+            specTotals[spec].add(container);
+        }
+    });
+    
+    // 화주별로 컨테이너 총 수 계산하여 정렬
+    const shipperTotalCounts = {};
+    Object.keys(shipperSpecCounts).forEach(shipper => {
+        const allContainers = new Set();
+        Object.values(shipperSpecCounts[shipper]).forEach(containers => {
+            containers.forEach(container => allContainers.add(container));
+        });
+        shipperTotalCounts[shipper] = allContainers.size;
+    });
+    
+    const sortedShippers = Object.entries(shipperTotalCounts)
+        .sort((a, b) => b[1] - a[1]);
+    
+    // HTML 생성
+    let summaryHtml = '';
+    
+    // 화주별 spec 구분 표시
+    sortedShippers.forEach(([shipper, totalCount]) => {
+        summaryHtml += `
+            <div class="summary-shipper">
+                <div class="shipper-header">
+                    <span class="shipper-name">${shipper}</span>
+                    <span class="container-count">${totalCount}</span>
+                </div>
+        `;
+        
+        // 해당 화주의 spec별 컨테이너 수
+        const shipperSpecs = Object.entries(shipperSpecCounts[shipper])
+            .sort((a, b) => b[1].size - a[1].size);
+        
+        shipperSpecs.forEach(([spec, containers]) => {
+            summaryHtml += `
+                <div class="spec-item">
+                    <span class="spec-name">${spec}</span>
+                    <span class="spec-count">${containers.size}</span>
+                </div>
+            `;
+        });
+        
+        summaryHtml += '</div>';
+    });
+    
+    // 총 spec별 컨테이너 수량 합계
+    const sortedSpecs = Object.entries(specTotals)
+        .sort((a, b) => b[1].size - a[1].size);
+    
+    if (sortedSpecs.length > 0) {
+        summaryHtml += `
+            <div class="spec-totals">
+                <div class="totals-header">전체 합계</div>
+        `;
+        
+        sortedSpecs.forEach(([spec, containers]) => {
+            summaryHtml += `
+                <div class="total-item">
+                    <span class="total-spec">${spec}</span>
+                    <span class="total-count">${containers.size}</span>
+                </div>
+            `;
+        });
+        
+        summaryHtml += '</div>';
+    }
+    
+    summaryListElement.innerHTML = summaryHtml;
+    
+    // 주간 총합 데이터를 전역 변수에 저장
+    if (!window.weeklyTotalData) window.weeklyTotalData = summaryHtml;
+    window.weeklyTotalData = summaryHtml;
+    
+    // 헤더에 주간 총합 요약 표시 (화주별)
+    generateTotalHeaderSummary(weekData);
+}
+
+// 요일별 헤더 요약 생성 - 화주별 주요 Spec 색상으로 표시
+function generateDayHeaderSummary(dayName, dayData) {
+    console.log(`🔍 generateDayHeaderSummary 호출: ${dayName}, 데이터 수: ${dayData ? dayData.length : 0}`);
+    
+    const dayIdMap = {
+        '월': 'monday',
+        '화': 'tuesday', 
+        '수': 'wednesday',
+        '목': 'thursday',
+        '금': 'friday'
+    };
+    
+    const headerSummaryElementId = dayIdMap[dayName] + 'SummaryHeader';
+    const headerSummaryElement = document.getElementById(headerSummaryElementId);
+    
+    if (!headerSummaryElement) {
+        console.error(`헤더 요약 요소를 찾을 수 없습니다: ${headerSummaryElementId}`);
+        return;
+    }
+    
+    if (!dayData || dayData.length === 0) {
+        console.log(`❌ ${dayName} 데이터 없음`);
+        headerSummaryElement.innerHTML = '';
+        return;
+    }
+    
+    // 화주별, Spec별 컨테이너 수 집계
+    const shipperSpecCounts = {};
+    
+    dayData.forEach(item => {
+        const record = item.data;
+        let shipper = record.consignee || record.shipper || '미분류';
+        
+        // consignee 값에서 괄호 안의 값만 추출
+        const parenthesesMatch = shipper.match(/\(([^)]+)\)/);
+        if (parenthesesMatch) {
+            shipper = parenthesesMatch[1];
+        }
+        
+        let spec = record.spec || '기타';
+        const container = record.container || '';
+        
+        // Spec 값 정규화 (대소문자, 공백 처리)
+        if (spec) {
+            spec = spec.toString().trim().toUpperCase();
+            // 다양한 40FT 표기 방식 통합
+            if (spec.includes('40') && spec.includes('F')) {
+                spec = '40FT';
+            }
+            // 다양한 20FT 표기 방식 통합  
+            else if (spec.includes('20') && spec.includes('F')) {
+                spec = '20FT';
+            }
+            // LCL 처리
+            else if (spec.includes('LCL')) {
+                spec = 'LCL';
+            }
+        }
+        
+        // 디버깅: Spec 값 정규화 및 확인
+        console.log(`📋 ${dayName} 레코드:`, {
+            원본화주: record.consignee || record.shipper,
+            처리된화주: shipper,
+            원본spec: record.spec,
+            정규화spec: spec,
+            container: container
+        });
+        
+        if (!shipperSpecCounts[shipper]) {
+            shipperSpecCounts[shipper] = {};
+        }
+        
+        if (!shipperSpecCounts[shipper][spec]) {
+            shipperSpecCounts[shipper][spec] = new Set();
+        }
+        
+        if (container) {
+            shipperSpecCounts[shipper][spec].add(container);
+        }
+    });
+    
+    // 디버깅: 집계 결과 출력
+    console.log(`📊 ${dayName} 화주별 Spec 집계:`, shipperSpecCounts);
+    
+    // 화주별로 컨테이너 총 수 계산하여 정렬
+    const shipperTotalCounts = {};
+    Object.keys(shipperSpecCounts).forEach(shipper => {
+        const allContainers = new Set();
+        Object.values(shipperSpecCounts[shipper]).forEach(containers => {
+            containers.forEach(container => allContainers.add(container));
+        });
+        shipperTotalCounts[shipper] = allContainers.size;
+    });
+    
+    const sortedShippers = Object.entries(shipperTotalCounts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 4); // 상위 4개 화주 표시
+    
+    console.log(`📊 ${dayName} 화주 데이터:`, sortedShippers);
+    
+    let summaryHtml = '';
+    sortedShippers.forEach(([shipper, totalCount]) => {
+        // 해당 화주의 spec별 컨테이너 수 가져오기
+        const shipperSpecs = Object.entries(shipperSpecCounts[shipper])
+            .sort((a, b) => b[1].size - a[1].size);
+        
+        // 디버깅: 화주별 상세 정보 출력
+        console.log(`🔍 ${dayName} 화주 "${shipper}" 분석:`, {
+            전체컨테이너수: totalCount,
+            spec별상세: shipperSpecs.map(([spec, containers]) => ({
+                spec: spec,
+                컨테이너수: containers.size,
+                컨테이너목록: Array.from(containers)
+            }))
+        });
+        
+        // 화주명 표시
+        summaryHtml += `<span class="summary-shipper-name">${shipper}:</span>`;
+        
+        // 각 Spec별 컨테이너 수를 색상별로 표시 (숫자만)
+        shipperSpecs.forEach(([spec, containers]) => {
+            const count = containers.size;
+            let specClass = 'spec-other';
+            
+            if (spec === '40FT') {
+                specClass = 'spec-40ft'; // red
+            } else if (spec === '20FT') {
+                specClass = 'spec-20ft'; // white
+            } else if (spec === 'LCL') {
+                specClass = 'spec-lcl'; // red
+            }
+            
+            summaryHtml += `<span class="summary-spec-item ${specClass}">${count}</span>`;
+        });
+        
+        summaryHtml += `<span class="summary-separator"> </span>`;
+    });
+    
+    console.log(`✅ ${dayName} 헤더 HTML:`, summaryHtml);
+    headerSummaryElement.innerHTML = summaryHtml;
+}
+
+// 주간 총합 헤더 요약 생성 - 화주별 주요 Spec 색상으로 표시
+function generateTotalHeaderSummary(weekData) {
+    const headerSummaryElement = document.getElementById('totalSummaryHeader');
+    
+    if (!headerSummaryElement) {
+        console.error('주간 총합 헤더 요약 요소를 찾을 수 없습니다: totalSummaryHeader');
+        return;
+    }
+    
+    if (!weekData || weekData.length === 0) {
+        headerSummaryElement.innerHTML = '';
+        return;
+    }
+    
+    // 화주별, Spec별 컨테이너 수 집계
+    const shipperSpecCounts = {};
+    
+    weekData.forEach(item => {
+        const record = item.data;
+        let shipper = record.consignee || record.shipper || '미분류';
+        
+        // consignee 값에서 괄호 안의 값만 추출
+        const parenthesesMatch = shipper.match(/\(([^)]+)\)/);
+        if (parenthesesMatch) {
+            shipper = parenthesesMatch[1];
+        }
+        
+        let spec = record.spec || '기타';
+        const container = record.container || '';
+        
+        // Spec 값 정규화 (대소문자, 공백 처리)
+        if (spec) {
+            spec = spec.toString().trim().toUpperCase();
+            // 다양한 40FT 표기 방식 통합
+            if (spec.includes('40') && spec.includes('F')) {
+                spec = '40FT';
+            }
+            // 다양한 20FT 표기 방식 통합  
+            else if (spec.includes('20') && spec.includes('F')) {
+                spec = '20FT';
+            }
+            // LCL 처리
+            else if (spec.includes('LCL')) {
+                spec = 'LCL';
+            }
+        }
+        
+        if (!shipperSpecCounts[shipper]) {
+            shipperSpecCounts[shipper] = {};
+        }
+        
+        if (!shipperSpecCounts[shipper][spec]) {
+            shipperSpecCounts[shipper][spec] = new Set();
+        }
+        
+        if (container) {
+            shipperSpecCounts[shipper][spec].add(container);
+        }
+    });
+    
+    // 화주별로 컨테이너 총 수 계산하여 정렬
+    const shipperTotalCounts = {};
+    Object.keys(shipperSpecCounts).forEach(shipper => {
+        const allContainers = new Set();
+        Object.values(shipperSpecCounts[shipper]).forEach(containers => {
+            containers.forEach(container => allContainers.add(container));
+        });
+        shipperTotalCounts[shipper] = allContainers.size;
+    });
+    
+    const sortedShippers = Object.entries(shipperTotalCounts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 6); // 상위 6개 화주 표시
+    
+    let summaryHtml = '';
+    sortedShippers.forEach(([shipper, totalCount]) => {
+        // 해당 화주의 spec별 컨테이너 수 가져오기
+        const shipperSpecs = Object.entries(shipperSpecCounts[shipper])
+            .sort((a, b) => b[1].size - a[1].size);
+        
+        // 화주명 표시
+        summaryHtml += `<span class="summary-shipper-name">${shipper}:</span>`;
+        
+        // 각 Spec별 컨테이너 수를 색상별로 표시 (숫자만)
+        shipperSpecs.forEach(([spec, containers]) => {
+            const count = containers.size;
+            let specClass = 'spec-other';
+            
+            if (spec === '40FT') {
+                specClass = 'spec-40ft'; // red
+            } else if (spec === '20FT') {
+                specClass = 'spec-20ft'; // white
+            } else if (spec === 'LCL') {
+                specClass = 'spec-lcl'; // red
+            }
+            
+            summaryHtml += `<span class="summary-spec-item ${specClass}">${count}</span>`;
+        });
+        
+        summaryHtml += `<span class="summary-separator"> </span>`;
+    });
+    
+    headerSummaryElement.innerHTML = summaryHtml;
 }
 
 

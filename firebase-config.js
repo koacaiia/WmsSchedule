@@ -2,7 +2,7 @@
 
 // Import Firebase functions
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
-import { getDatabase, ref, push, set, onValue } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
+import { getDatabase, ref, push, set, onValue, update } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
 
 // Firebase configuration
 const firebaseConfig = {
@@ -26,6 +26,7 @@ window.firebaseRef = ref;
 window.firebasePush = push;
 window.firebaseSet = set;
 window.firebaseOnValue = onValue;
+window.firebaseUpdate = update;
 
 console.log('Firebase Realtime Database initialized successfully');
 console.log('Database URL:', firebaseConfig.databaseURL);
