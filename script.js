@@ -162,6 +162,9 @@ function addNewArrival(prefilledData = null) {
     const modal = document.getElementById('newArrivalModal');
     modal.style.display = 'block';
     
+    // 삭제 버튼 기본적으로 보이게 설정
+    const deleteBtn = document.getElementById('deleteArrivalBtn');
+    
     // 미리 채울 데이터가 없는 경우에만 현재 날짜 설정
     if (!prefilledData) {
         // 현재 날짜를 반입일 기본값으로 설정
@@ -170,7 +173,20 @@ function addNewArrival(prefilledData = null) {
         if (importDateElement) {
             importDateElement.value = today;
         }
+        // 새로운 입고 등록일 때는 record-key 초기화 (삭제 버튼 숨기기)
+        currentModalRecordKey = null;
+        if (deleteBtn) {
+            deleteBtn.style.display = 'none';
+        }
+    } else {
+        // 기존 데이터 편집할 때는 삭제 버튼 표시
+        if (deleteBtn) {
+            deleteBtn.style.display = 'block';
+        }
     }
+    
+    // 화주명 select 옵션 채우기
+    populateShipperSelect();
 }
 
 // 모달 닫기 함수
@@ -183,6 +199,53 @@ function closeModal() {
     if (form) {
         form.reset();
     }
+    
+    // 화주명 select/input 초기화
+    const shipperSelect = document.getElementById('shipper');
+    const shipperInput = document.getElementById('shipperInput');
+    if (shipperSelect && shipperInput) {
+        shipperSelect.style.display = 'block';
+        shipperInput.style.display = 'none';
+        shipperSelect.value = '';
+        shipperInput.value = '';
+    }
+    
+    // 현재 record-key 초기화 및 삭제 버튼 숨기기
+    currentModalRecordKey = null;
+    const deleteBtn = document.getElementById('deleteArrivalBtn');
+    if (deleteBtn) {
+        deleteBtn.style.display = 'none';
+    }
+}
+
+// 화주명 select 옵션 채우기
+function populateShipperSelect() {
+    const shipperSelect = document.getElementById('shipper');
+    if (!shipperSelect) return;
+    
+    // 기존 데이터에서 화주명 추출
+    const shippers = new Set();
+    allInCargoData.forEach(item => {
+        const shipper = item.data.consignee || item.data.shipper;
+        if (shipper && shipper.trim()) {
+            shippers.add(shipper.trim());
+        }
+    });
+    
+    // 기존 옵션 제거 (기본 옵션 제외)
+    while (shipperSelect.options.length > 2) {
+        shipperSelect.remove(2);
+    }
+    
+    // 화주명 옵션 추가 (알파벳순 정렬)
+    Array.from(shippers).sort().forEach(shipper => {
+        const option = document.createElement('option');
+        option.value = shipper;
+        option.textContent = shipper;
+        shipperSelect.insertBefore(option, shipperSelect.querySelector('option[value="__custom__"]'));
+    });
+    
+    console.log(`📋 화주명 select 옵션 업데이트: ${shippers.size}개`);
 }
 
 // 폼 데이터를 객체로 변환하는 함수
@@ -193,10 +256,22 @@ function createContainerObject(formData) {
     const date = year + '-' + (month.length === 1 ? '0' + month : month) + '-' + (day.length === 1 ? '0' + day : day);
     console.log('Formatted date:', date);
     
+    // 화주명 가져오기 (select 또는 input)
+    const shipperSelect = document.getElementById('shipper');
+    const shipperInput = document.getElementById('shipperInput');
+    let shipperValue = '';
+    
+    if (shipperSelect.style.display !== 'none') {
+        shipperValue = formData.get('shipper');
+    } else {
+        shipperValue = formData.get('shipperInput');
+    }
+    console.log('Consignee (shipper) value:', shipperValue);
+    console.log('Container number value:', formData);
     const containerObject = {
         // 기본 정보
-        date: date,
-        consignee: formData.get('shipper'),
+        date: date,     
+        consignee: shipperValue||"",
         container: formData.get('container'),
         count: formData.get('seal') || '',
         bl: formData.get('bl'),
@@ -211,11 +286,7 @@ function createContainerObject(formData) {
         
         // 시스템 정보
         working: "", // 입고대기
-        priority: 'normal',
-        registeredBy: 'system',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        refValue: "DeptName/WareHouseDept2/InCargo/" + formData.get('importDate') + "_" + formData.get('bl') + "_" + formData.get('itemName') + "_" + formData.get('seal') + "_" + formData.get('container')
+        
     };
     
     return containerObject;
@@ -233,15 +304,15 @@ async function uploadToRealtimeDatabase(containerObject) {
     }
     
     try {
-        // 날짜를 yyyy/mm/dd 형태로 변환
+        // 날짜를 yyyy 형태로 변환 (연도 단위 경로)
         const dateStr = containerObject.date; // yyyy-mm-dd 형태
-        const datePath = dateStr.replace(/-/g, '/'); // yyyy/mm/dd 형태로 변환
-        
-        // 새로운 구조만 사용: /DeptName/WareHouseDept2/InCargo/yyyy/mm/dd/
+        const datePath = dateStr.replaceAll("-", "/"); // yyyy 
+
+        // 새로운 구조: /DeptName/WareHouseDept2/InCargo/yyyy
         const basePath = `DeptName/WareHouseDept2/InCargo/${datePath}`;
         
         console.log('📅 새로운 날짜 구조로 업로드:', basePath);
-        console.log('📍 날짜 경로:', datePath);
+        console.log('📍 날짜 경로(연도):', datePath);
         
         // 해당 날짜 경로에서 기존 레코드 수 확인하여 새로운 키 생성
         const dateRef = window.firebaseRef(window.firebaseDb, basePath);
@@ -255,20 +326,20 @@ async function uploadToRealtimeDatabase(containerObject) {
                     console.log('📊 스냅샷 수신:', snapshot.exists() ? '데이터 존재' : '데이터 없음');
                     
                     // 데이터 유효성 검사
-                    if (!containerObject.bl || !containerObject.description || !containerObject.count || !containerObject.container) {
-                        throw new Error(`신규 입고 데이터 필수 필드 누락: bl=${containerObject.bl}, description=${containerObject.description}, count=${containerObject.count}, container=${containerObject.container}`);
+                    if (!containerObject.bl || !containerObject.description || !containerObject.count || !containerObject.container|| !containerObject.consignee) {
+                        throw new Error(`신규 입고 데이터 필수 필드 누락: bl=${containerObject.bl}, description=${containerObject.description}, count=${containerObject.count}, container=${containerObject.container}, consignee=${containerObject.consignee}`);
                     }
                     
                     let newRecordKey;
                     
                     // 새로운 키 구조 생성: bl+""+description+""+count+"_"+container
-                    const bl = (containerObject.bl || 'NO_BL').replace(/[^a-zA-Z0-9]/g, '');
-                    const description = (containerObject.description || 'NO_DESC').replace(/[^a-zA-Z0-9\uAC00-\uD7A3]/g, '');
-                    const count = (containerObject.count || 'NO_COUNT').replace(/[^a-zA-Z0-9]/g, '');
-                    const container = (containerObject.container || 'NO_CONTAINER').replace(/[^a-zA-Z0-9]/g, '');
-                    
-                    newRecordKey = `${bl}${description}${count}_${container}`;
-                    console.log(`🔑 새로운 키 구조 생성 (bl+description+count_container): ${newRecordKey}`);
+                    const bl = (containerObject.bl || 'NO_BL');
+                    const description = (containerObject.description || 'NO_DESC');
+                    const count = (containerObject.count || 'NO_COUNT');
+                    const container = (containerObject.container || 'NO_CONTAINER');
+                    const consignee = (containerObject.consignee || 'NO_CONSIGNEE');
+                    console.log('키 생성용 필드 정제 완료:', { bl, description, count, container, consignee });
+                    newRecordKey = `${consignee}/${bl}_${description}_${count}_${container}`;
                     
                     // 중복 키 처리
                     if (snapshot.exists()) {
@@ -310,17 +381,7 @@ async function uploadToRealtimeDatabase(containerObject) {
                         
                         // 시스템 정보 (새로운 구조용)
                         working: containerObject.working || "",
-                        priority: containerObject.priority || 'normal',
-                        registeredBy: containerObject.registeredBy || 'system',
-                        createdAt: containerObject.createdAt || new Date().toISOString(),
-                        updatedAt: new Date().toISOString(),
-                        
-                        // 새로운 구조 메타데이터
-                        recordKey: newRecordKey,
-                        datePath: datePath,
-                        structureVersion: '3.0', // 새로운 키 구조 버전
-                        keyStructure: 'bl+description+count_container',
-                        uploadedAt: new Date().toISOString()
+                        refValue:fullPath
                     };
                     
                     // 데이터 업로드 시도
@@ -429,8 +490,31 @@ async function submitNewArrival() {
     const form = document.getElementById('newArrivalForm');
     const formData = new FormData(form);
     
+    // 화주명 검증 (select 또는 input)
+    const shipperSelect = document.getElementById('shipper');
+    const shipperInput = document.getElementById('shipperInput');
+    let shipperValue = '';
+    
+    if (shipperSelect.style.display !== 'none') {
+        shipperValue = shipperSelect.value;
+        if (!shipperValue || shipperValue === '__custom__') {
+            alert('화주명을 선택해주세요.');
+            shipperSelect.style.borderColor = '#dc3545';
+            return;
+        }
+        shipperSelect.style.borderColor = '#ddd';
+    } else {
+        shipperValue = shipperInput.value.trim();
+        if (!shipperValue) {
+            alert('화주명을 입력해주세요.');
+            shipperInput.style.borderColor = '#dc3545';
+            return;
+        }
+        shipperInput.style.borderColor = '#ddd';
+    }
+    
     // 필수 필드 검증
-    const requiredFields = ['importDate', 'shipper', 'container', 'bl', 'itemName'];
+    const requiredFields = ['importDate', 'container', 'bl', 'itemName'];
     let isValid = true;
     
     requiredFields.forEach(field => {
@@ -556,17 +640,17 @@ function extractRowData(row) {
     // 현재 테이블 구조: 순번, 입항일, 컨테이너번호, 선박명, 화물종류, 중량, 출발지, 목적지, 상태, 우선순위, 담당자, 특이사항
     return {
         importDate: cells[1].textContent.trim(),
-        container: cells[2].textContent.replace(/<[^>]*>/g, '').trim(), // HTML 태그 제거
-        shipper: "Test", // 선박명을 화주명으로 매핑
-        itemName: cells[5].textContent.trim(), // 화물종류를 품명으로 매핑
-        seal: cells[3].textContent.trim(), // 테이블에 SEAL 정보가 없으므로 빈값
-        bl: cells[4].textContent.trim(), // 테이블에 BL 정보가 없으므로 빈값
-        qtyEa: cells[6].textContent.trim(), // 테이블에 EA 수량 정보가 없으므로 빈값
-        qtyPlt: cells[7].textContent.trim(), // 중량을 PLT로 임시 매핑
-        spec: cells[8].textContent.trim(), // 테이블에 규격 정보가 없으므로 빈값
-        shape: cells[9].textContent.trim(), // 테이블에 형태 정보가 없으므로 빈값
-        remark: cells.length > 10 ? cells[10].textContent.trim() : '' // 특이사항
-    };
+        container: cells[3].textContent.replace(/<[^>]*>/g, '').trim(), // HTML 태그 제거
+        shipper: cells[2].textContent.trim(), // 선박명을 화주명으로 매핑
+        itemName: cells[6].textContent.trim(), // 화물종류를 품명으로 매핑
+        seal: cells[4].textContent.trim(), // 테이블에 SEAL 정보가 없으므로 빈값
+        bl: cells[5].textContent.trim(), // 테이블에 BL 정보가 없으므로 빈값
+        qtyEa: cells[7].textContent.trim(), // 테이블에 EA 수량 정보가 없으므로 빈값
+        qtyPlt: cells[8].textContent.trim(), // 중량을 PLT로 임시 매핑
+        spec: cells[9].textContent.trim(), // 테이블에 규격 정보가 없으므로 빈값
+        shape: cells[10].textContent.trim(), // 테이블에 형태 정보가 없으므로 빈값
+        remark: cells.length > 11 ? cells[11].textContent.trim() : '' // 특이사항
+    };  
 }
 
 // 모달 폼에 데이터 채우기 함수
@@ -580,7 +664,7 @@ function populateModalWithData(data) {
             element.value = (value === '-' || !value) ? '' : value;
         }
     };
-    
+    console.log('데이터를 모달에 채우는 중:', data);
     setValue('importDate', data.importDate);
     setValue('shipper', data.shipper); // 선박명을 화주명 필드에
     setValue('container', data.container);
@@ -591,12 +675,31 @@ function populateModalWithData(data) {
     setValue('qtyPlt', data.qtyPlt);
     setValue('remark', data.remark);
     
-    // Select 요소들은 빈값으로 초기화
+    // Spec select 설정
     const specSelect = document.getElementById('spec');
-    const shapeSelect = document.getElementById('shape');
+    if (specSelect && data.spec) {
+        const specValue = data.spec.trim();
+        // select에 해당 옵션이 있는지 확인
+        const specOption = Array.from(specSelect.options).find(opt => opt.value === specValue);
+        if (specOption) {
+            specSelect.value = specValue;
+        } else {
+            specSelect.value = '';
+        }
+    }
     
-    if (specSelect) specSelect.value = '';
-    if (shapeSelect) shapeSelect.value = '';
+    // Shape select 설정
+    const shapeSelect = document.getElementById('shape');
+    if (shapeSelect && data.shape) {
+        const shapeValue = data.shape.trim();
+        // select에 해당 옵션이 있는지 확인
+        const shapeOption = Array.from(shapeSelect.options).find(opt => opt.value === shapeValue);
+        if (shapeOption) {
+            shapeSelect.value = shapeValue;
+        } else {
+            shapeSelect.value = '';
+        }
+    }
     
     console.log('모달에 데이터가 채워졌습니다:', data);
 }
@@ -611,6 +714,11 @@ function addTableRowClickListeners() {
             if (clickedRow && clickedRow.parentNode === tableBody) {
                 console.log('테이블 행이 클릭되었습니다:', clickedRow);
                 
+                // 행의 data-record-key 추출 (Firebase 경로)
+                const recordKey = clickedRow.getAttribute('data-record-key');
+                currentModalRecordKey = recordKey;
+                console.log('📝 현재 modal record-key:', currentModalRecordKey);
+                
                 // 행 데이터 추출
                 const rowData = extractRowData(clickedRow);
                 
@@ -620,6 +728,11 @@ function addTableRowClickListeners() {
                 // 데이터 채우기 (모달이 열린 후 약간의 지연)
                 setTimeout(() => {
                     populateModalWithData(rowData);
+                    // 삭제 버튼 표시 (record-key가 있을 때만)
+                    const deleteBtn = document.getElementById('deleteArrivalBtn');
+                    if (deleteBtn && currentModalRecordKey) {
+                        deleteBtn.style.display = 'block';
+                    }
                 }, 100);
             }
         });
@@ -1236,9 +1349,9 @@ async function loadDataFromDatabase() {
                             <td>${record.remark || '-'}</td>
                         `;
                         
-                        // 데이터 속성 추가
-                        newRow.setAttribute('data-record-path', recordInfo.path);
-                        newRow.setAttribute('data-record-key', recordInfo.key);
+                        // 데이터 속성 추가 (전체 경로를 key에 저장)
+                        console.log(record);
+                        newRow.setAttribute('data-record-key', record.refValue);
                         
                         rowIndex++;
                     });
@@ -1271,6 +1384,7 @@ let allInCargoData = [];
 let filteredData = []; // 필터링된 데이터를 저장하는 배열
 let draggedItem = null;
 let draggedItemData = null;
+let currentModalRecordKey = null; // 현재 modal에 열려있는 record의 Firebase 경로
 
 // 날짜 범위 계산 함수
 function getDateRange(period) {
@@ -1455,9 +1569,8 @@ function displayFilteredData(data, periodDescription) {
             <td>${record.remark || '-'}</td>
         `;
         
-        // 데이터 속성 추가
-        newRow.setAttribute('data-record-path', item.path);
-        newRow.setAttribute('data-record-key', item.key);
+        // 데이터 속성 추가 (전체 경로를 key에 저장)
+        newRow.setAttribute('data-record-key', record.refValue);
     });
     
     console.log(`📋 테이블 업데이트 완료: ${filteredData.length}개 레코드 표시 (${periodDescription})`);
@@ -1557,9 +1670,8 @@ function filterTableByShipper() {
             <td>${record.remark || '-'}</td>
         `;
         
-        // 데이터 속성 추가
-        newRow.setAttribute('data-record-path', item.path);
-        newRow.setAttribute('data-record-key', item.key);
+        // 데이터 속성 추가 (전체 경로를 key에 저장)
+        newRow.setAttribute('data-record-key', record.refValue);
     });
     
     console.log(`📋 화주 필터링 완료: ${dataToShow.length}개 레코드 표시 (${description})`);
@@ -3582,7 +3694,6 @@ async function getInCargoLeafData() {
                                         findLeafNodes(value, currentPath);
                                     } else {
                                         // 이것이 leaf node (실제 데이터)
-                                        console.log(`🍃 Leaf node 발견: ${currentPath}`);
                                         leafNodes.push({
                                             path: currentPath,
                                             key: key,
@@ -3710,6 +3821,12 @@ function enforceFixedHeader() {
 document.addEventListener('DOMContentLoaded', function() {
     console.log('화인통상 물류 컨테이너 관리 시스템이 로드되었습니다.');
     
+    // 삭제 버튼 초기 상태 - 보이게 설정
+    const deleteBtn = document.getElementById('deleteArrivalBtn');
+    if (deleteBtn) {
+        deleteBtn.style.display = 'block';
+    }
+    
     // 테이블 행 클릭 이벤트 리스너 추가
     addTableRowClickListeners();
     
@@ -3723,4 +3840,72 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Firebase에서 InCargo 데이터 자동 로드 후 오늘 필터 적용
     loadInCargoDataOnPageLoad();
+    
+    // 화주명 toggle button 이벤트 리스너 추가
+    const shipperToggleBtn = document.getElementById('shipperToggleBtn');
+    const shipperSelect = document.getElementById('shipper');
+    const shipperInput = document.getElementById('shipperInput');
+    
+    if (shipperToggleBtn && shipperSelect && shipperInput) {
+        shipperToggleBtn.addEventListener('click', function() {
+            if (shipperSelect.style.display !== 'none') {
+                // select 숨기고 input 표시
+                shipperSelect.style.display = 'none';
+                shipperInput.style.display = 'block';
+                shipperInput.focus();
+                shipperInput.value = '';
+                this.textContent = '화주명 * (선택 모드로 전환: 버튼 클릭)';
+            } else {
+                // input 숨기고 select 표시
+                shipperInput.style.display = 'none';
+                shipperSelect.style.display = 'block';
+                shipperSelect.value = '';
+                shipperSelect.focus();
+                this.textContent = '화주명 *';
+            }
+        });
+    }
 });
+
+// 삭제 버튼 클릭 핸들러 - Firebase에서 데이터 삭제
+window.handleDeleteArrival = async function() {
+    if (!currentModalRecordKey) {
+        alert('삭제할 레코드가 없습니다.');
+        return;
+    }
+    
+    // 사용자 확인
+    const confirmed = confirm(`정말로 이 데이터를 삭제하시겠습니까?\n\n경로: ${currentModalRecordKey}`);
+    if (!confirmed) {
+        console.log('❌ 삭제 취소됨');
+        return;
+    }
+    
+    try {
+        console.log('🗑️ Firebase에서 데이터 삭제 시작...');
+        console.log('📍 삭제 대상 경로:', currentModalRecordKey);
+        
+        // Firebase 참조 생성 및 데이터 삭제 (null 설정)
+        const recordRef = window.firebaseRef(window.firebaseDb, currentModalRecordKey);
+        await window.firebaseSet(recordRef, null);
+        
+        console.log('✅ Firebase에서 데이터 삭제 완료');
+        alert('데이터가 성공적으로 삭제되었습니다.');
+        
+        // 모달 닫기
+        closeModal();
+        
+        // 테이블 새로고침 (데이터 다시 로드)
+        console.log('🔄 데이터 새로고침 중...');
+        await loadInCargoDataOnPageLoad();
+        
+        // 오늘 날짜로 기본 필터 적용
+        setTimeout(() => {
+            filterByDatePeriod('today');
+        }, 500);
+        
+    } catch (error) {
+        console.error('❌ 데이터 삭제 중 오류:', error);
+        alert(`데이터 삭제 중 오류가 발생했습니다:\n${error.message}`);
+    }
+};

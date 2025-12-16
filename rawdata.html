@@ -129,6 +129,19 @@
             cursor: pointer;
             accent-color: #667eea;
         }
+
+        /* 편집 가능한 셀 스타일 (발주 품목 전용) */
+        .rawdata-table td.editable {
+            background: #fffdfa;
+            border-left: 2px solid #ffd966;
+        }
+        .rawdata-table td.editable:focus {
+            outline: 2px solid #ffc107;
+            background: #fff7e6;
+        }
+        .rawdata-table td.editable::selection {
+            background: #ffe8a1;
+        }
         
         .empty-message {
             text-align: center;
@@ -183,6 +196,14 @@
 <body>
     <div class="rawdata-container">
         <div class="rawdata-toolbar">
+            <div style="display: flex; align-items: center; gap: 15px; margin-right: auto;">
+                <label for="shipperSelect" style="color: white; font-weight: bold; font-size: 14px; white-space: nowrap;">화주명:</label>
+                <select id="shipperSelect" style="padding: 8px 12px; border-radius: 4px; border: 1px solid #ddd; font-size: 14px; min-width: 200px;">
+                    <option value="">-- 선택해주세요 --</option>
+                    <option value="__custom__">직접입력</option>
+                </select>
+                <input type="text" id="shipperInput" placeholder="화주명을 입력하세요" style="display: none; padding: 8px 12px; border-radius: 4px; border: 1px solid #ddd; font-size: 14px; min-width: 200px;">
+            </div>
             <button class="btn btn-convert" onclick="convertData()">변환</button>
             <button class="btn btn-register" onclick="registerData()">등록</button>
         </div>
@@ -204,8 +225,23 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     
     <script>
-        // 페이지 로드 시 localStorage에서 데이터 읽어서 테이블 생성
+        // 화주명 select 변경 이벤트
         document.addEventListener('DOMContentLoaded', function() {
+            const shipperSelect = document.getElementById('shipperSelect');
+            const shipperInput = document.getElementById('shipperInput');
+            
+            shipperSelect.addEventListener('change', function() {
+                if (this.value === '__custom__') {
+                    shipperSelect.style.display = 'none';
+                    shipperInput.style.display = 'block';
+                    shipperInput.focus();
+                    shipperInput.value = '';
+                } else {
+                    shipperInput.style.display = 'none';
+                    shipperSelect.style.display = 'block';
+                }
+            });
+            
             const storedData = localStorage.getItem('rawDataContent');
             if (storedData) {
                 try {
@@ -266,10 +302,13 @@
             });
             tableHead.appendChild(headerRow);
             
-            console.log(`📝 헤더 생성 완료: ${headers.length}개 컬럼 (Excel 1행 기준)`);
-            
             // === 2행부터 데이터 행으로 표시 ===
             let dataRowCount = 0;
+            // "발주 품목" 컬럼 인덱스 탐색 (변형 표기 허용)
+            const itemHeaderIndex = headers.findIndex(h => {
+                const t = (h || '').toString().trim();
+                return t === '발주 품목' || t === '발주품목';
+            });
             for (let i = 1; i < data.length; i++) {
                 const rowData = data[i];
                 // 빈 행 건너뛰기
@@ -300,6 +339,31 @@
                 for (let j = 0; j < headers.length; j++) {
                     const td = document.createElement('td');
                     td.textContent = rowData[j] !== undefined && rowData[j] !== null ? rowData[j] : '';
+                    // 발주 품목 컬럼은 편집 가능하게 처리
+                    if (j === itemHeaderIndex) {
+                        td.contentEditable = 'true';
+                        td.classList.add('editable');
+                        td.title = '클릭하여 발주 품목을 편집하세요 (Enter로 완료)';
+                        td.setAttribute('tabindex', '0');
+                        // Enter로 편집 종료
+                        td.addEventListener('keydown', function(e) {
+                            if (e.key === 'Enter') {
+                                e.preventDefault();
+                                this.blur();
+                            }
+                        });
+                        // 붙여넣기 시 텍스트만 유지
+                        td.addEventListener('paste', function(e) {
+                            e.preventDefault();
+                            const text = (e.clipboardData || window.clipboardData).getData('text');
+                            document.execCommand('insertText', false, text);
+                        });
+                        // 포커스 아웃 시 공백 정리
+                        td.addEventListener('blur', function() {
+                            const cleaned = this.textContent.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+                            this.textContent = cleaned;
+                        });
+                    }
                     row.appendChild(td);
                 }
                 
@@ -309,7 +373,56 @@
             // 전역 변수에 데이터 저장
             window.rawDataContent = data;
             
-            console.log(`✅ 테이블 생성 완료: 헤더 ${headers.length}개, 데이터 ${dataRowCount}행`);
+            // 화주명 컬럼 찾기 및 unique 값으로 select options 생성
+            extractAndPopulateShippers(headers, data);
+        }
+        
+        // 화주명 컬럼을 찾아서 unique 값으로 select options 생성
+        function extractAndPopulateShippers(headers, data) {
+            // 화주명 컬럼 인덱스 찾기 (다양한 표기 허용)
+            const shipperHeaderIndex = headers.findIndex(h => {
+                const t = (h || '').toString().trim();
+                return t === '화주' || t === '화주명' || t === '업체명' || t === '공급사' || t === '공급자' || t === '거래처';
+            });
+            
+            if (shipperHeaderIndex === -1) {
+                console.log('⚠️ 화주명 컬럼을 찾을 수 없습니다.');
+                return;
+            }
+       
+        // 2행부터 시작해서 화주명 값 수집
+            const shippers = new Set();
+            for (let i = 1; i < data.length; i++) {
+                const rowData = data[i];
+                if (rowData && rowData[shipperHeaderIndex]) {
+                    const shipper = rowData[shipperHeaderIndex].toString().trim();
+                    if (shipper.length > 0) {
+                        shippers.add(shipper);
+                    }
+                }
+            }
+            
+            console.log(`✅ ${shippers.size}개의 unique 화주명 발견:`, Array.from(shippers));
+            
+            // select options 업데이트
+            const shipperSelect = document.getElementById('shipperSelect');
+            const existingOptions = shipperSelect.querySelectorAll('option');
+            
+            // 기존 옵션 제거 ("선택해주세요"와 "직접입력" 제외)
+            for (let i = existingOptions.length - 1; i >= 2; i--) {
+                shipperSelect.removeChild(existingOptions[i]);
+            }
+            
+            // 화주명 옵션 추가 (알파벳순 정렬)
+            Array.from(shippers).sort().forEach(shipper => {
+                const option = document.createElement('option');
+                option.value = shipper;
+                option.textContent = shipper;
+                shipperSelect.insertBefore(option, shipperSelect.querySelector('option[value="__custom__"]'));
+            });
+            
+            // 전역 변수에 저장 (convertData에서 사용)
+            window.shipperHeaderIndex = shipperHeaderIndex;
         }
         
         // 전체 체크박스 토글
@@ -319,7 +432,6 @@
                 cb.checked = checked;
                 updateRowSelection(cb);
             });
-            console.log(`☑️ 전체 ${checked ? '선택' : '해제'}: ${checkboxes.length}행`);
         }
         
         // 행 선택 상태 업데이트
@@ -357,6 +469,32 @@
             });
             return selectedRows;
         }
+
+        // 쉼표가 숫자 사이일 때(천단위 구분) 분리하지 않는 split 함수
+        function splitItemsPreservingThousands(str) {
+            if (!str || typeof str !== 'string') return [];
+            const items = [];
+            let current = '';
+            for (let i = 0; i < str.length; i++) {
+                const ch = str[i];
+                if (ch === ',') {
+                    const prev = i > 0 ? str[i - 1] : '';
+                    const next = i < str.length - 1 ? str[i + 1] : '';
+                    // 양 옆이 숫자면 천단위 구분자로 간주하고 그대로 유지
+                    if (/\d/.test(prev) && /\d/.test(next)) {
+                        current += ch;
+                    } else {
+                        // 실제 구분자: 현재 버퍼를 항목으로 확정
+                        if (current.trim().length > 0) items.push(current.trim());
+                        current = '';
+                    }
+                } else {
+                    current += ch;
+                }
+            }
+            if (current.trim().length > 0) items.push(current.trim());
+            return items;
+        }
         
         // 테이블 정렬
         function sortTable(colIndex) {
@@ -393,8 +531,6 @@
                 row.cells[1].textContent = idx + 1; // 순번 셀 (인덱스 1)
                 tbody.appendChild(row);
             });
-            
-            console.log(`📊 정렬 완료: 컬럼 ${colIndex}, ${currentDir}`);
         }
         
         // 변환 버튼 클릭
@@ -405,6 +541,24 @@
                 return;
             }
             
+            // 화주명 확인
+            const shipperSelect = document.getElementById('shipperSelect');
+            const shipperInput = document.getElementById('shipperInput');
+            let selectedShipper = '';
+            
+            if (shipperSelect.style.display !== 'none') {
+                selectedShipper = shipperSelect.value;
+            } else {
+                selectedShipper = shipperInput.value.trim();
+            }
+            
+            if (!selectedShipper) {
+                alert('화주명을 선택하거나 입력해주세요.');
+                return;
+            }
+            
+            console.log(`📋 선택된 화주명: ${selectedShipper}`);
+            
             // 현재 테이블 헤더 가져오기
             const headers = [];
             document.querySelectorAll('#rawDataTableHead th.sortable-header').forEach(th => {
@@ -412,18 +566,14 @@
             });
             
             // 헤더 매핑 (rawdata 헤더 → containerTable 헤더)
-            // 차순 → SEAL, container → 형태, B/L No → Bl, 입고요청일 → 반입일, 발주 품목 → 품명
+            // 차순 → SEAL, container → 형태, B/L No → Bl, 입고요청일 → 반입일, 발주 품목 → 품명, 선적일 → 특이사항
             const headerMapping = {
                 '차순': 'SEAL',
-                'container': '형태',
-                'Container': '형태',
-                'CONTAINER': '형태',
+                '컨테이너': '규격',
                 'B/L No': 'Bl',
-                'B/L NO': 'Bl',
-                'B/L no': 'Bl',
                 '입고요청일': '반입일',
                 '발주 품목': '품명',
-                '발주품목': '품명'
+                '선적일': '특이사항'
             };
             
             // containerTable 헤더 순서
@@ -438,24 +588,207 @@
                     if (targetIdx !== -1) {
                         columnMapping[idx] = targetIdx;
                     }
-                }
+                }   
             });
             
-            console.log('헤더 목록:', headers);
-            console.log('컬럼 매핑:', columnMapping);
-            
             // 선택된 행 데이터를 containerTable 형식으로 변환
-            const convertedData = selectedRows.map(rowData => {
+            const convertedData = [];
+            
+            selectedRows.forEach(rowData => {
                 const newRow = new Array(containerTableHeaders.length).fill('');
                 rowData.forEach((cellData, idx) => {
                     if (columnMapping[idx] !== undefined) {
                         newRow[columnMapping[idx]] = cellData;
                     }
                 });
-                return newRow;
+                
+                // 화주명(인덱스 1)을 선택된 값으로 설정
+                newRow[1] = selectedShipper;
+                
+                // 반입일(인덱스 0) 날짜 형식 변환: yyyy-mm-dd로 통일
+                if (newRow[0]) {
+                    const originalValue = newRow[0];
+                    let formattedDate = '';
+                    
+                    // Date 객체인 경우 (cellDates: true)
+                    if (originalValue instanceof Date) {
+                        const year = originalValue.getFullYear();
+                        const month = String(originalValue.getMonth() + 1).padStart(2, '0');
+                        const day = String(originalValue.getDate()).padStart(2, '0');
+                        formattedDate = `${year}-${month}-${day}`;
+                    }
+                    // 숫자인 경우 (엑셀 시리얼 날짜)
+                    else if (typeof originalValue === 'number') {
+                        const excelEpoch = new Date(1900, 0, 1);
+                        const days = originalValue - 2;
+                        const date = new Date(excelEpoch.getTime() + days * 24 * 60 * 60 * 1000);
+                        const year = date.getFullYear();
+                        const month = String(date.getMonth() + 1).padStart(2, '0');
+                        const day = String(date.getDate()).padStart(2, '0');
+                        formattedDate = `${year}-${month}-${day}`;
+                    }
+                    // 문자열인 경우
+                    else {
+                        const dateStr = originalValue.toString().trim();
+                        
+                        // YYYY-MM-DD 형식이면 유지
+                        if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+                            formattedDate = dateStr;
+                        }
+                        // YYYY/MM/DD 형식
+                        else if (/^\d{4}\/\d{2}\/\d{2}$/.test(dateStr)) {
+                            formattedDate = dateStr.replace(/\//g, '-');
+                        }
+                        // MM/DD/YYYY 형식
+                        else if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(dateStr)) {
+                            const parts = dateStr.split('/');
+                            const month = parts[0].padStart(2, '0');
+                            const day = parts[1].padStart(2, '0');
+                            const year = parts[2];
+                            formattedDate = `${year}-${month}-${day}`;
+                        }
+                        // YYYY.MM.DD 형식
+                        else if (/^\d{4}\.\d{2}\.\d{2}$/.test(dateStr)) {
+                            formattedDate = dateStr.replace(/\./g, '-');
+                        }
+                        // 숫자 문자열 (엑셀 시리얼)
+                        else if (!isNaN(parseFloat(dateStr)) && isFinite(dateStr)) {
+                            const excelEpoch = new Date(1900, 0, 1);
+                            const days = parseFloat(dateStr) - 2;
+                            const date = new Date(excelEpoch.getTime() + days * 24 * 60 * 60 * 1000);
+                            const year = date.getFullYear();
+                            const month = String(date.getMonth() + 1).padStart(2, '0');
+                            const day = String(date.getDate()).padStart(2, '0');
+                            formattedDate = `${year}-${month}-${day}`;
+                        }
+                        // dd(요일) 형식 처리 - 현재 년/월 사용
+                        else if (/^\d{1,2}\([가-힣]+\)$/.test(dateStr)) {
+                            const day = dateStr.match(/^\d{1,2}/)[0].padStart(2, '0');
+                            const now = new Date();
+                            const year = now.getFullYear();
+                            const month = String(now.getMonth() + 1).padStart(2, '0');
+                            formattedDate = `${year}-${month}-${day}`;
+                        }
+                        else {
+                            formattedDate = dateStr;
+                        }
+                    }
+                    
+                    newRow[0] = formattedDate;
+                }
+                
+                // 규격(인덱스 8) 자동 설정: "컨테이너" 열 내용 기반
+                // rawdata의 "컨테이너" 열이 규격 필드로 매핑되므로 해당 값을 분석
+                if (newRow[8]) {
+                    const containerValue = newRow[8].toString().trim();
+                    
+                    // 2를 포함하면 20FT
+                    if (containerValue.includes('2')) {
+                        newRow[8] = '20FT';
+                    }
+                    // 4를 포함하면 40FT
+                    else if (containerValue.includes('4')) {
+                        newRow[8] = '40FT';
+                    }
+                    // 그 외 LCL
+                    else {
+                        newRow[8] = 'LCL';
+                    }
+                }
+                
+                // 발주 품목(인덱스 5) 필터링: "," 포함시 split하여 새로운 row 생성
+                const itemName = newRow[5] ? newRow[5].toString().trim() : '';
+                
+                // "," 포함 여부 확인 (숫자 사이의 "," 는 천단위로 인정하여 분리하지 않음)
+                const itemList = splitItemsPreservingThousands(itemName)
+                    .map(item => item.trim())
+                    .filter(item => item.length > 0)
+                    .sort((a, b) => a.localeCompare(b, 'ko-KR'));
+                if (itemList.length > 1) {
+                    
+                    // 정렬된 각 항목별로 새로운 row 생성
+                    itemList.forEach(item => {
+                        const rowWithItem = [...newRow];
+                        
+                        // "-숫자p" 패턴 체크 (Pallet) - 다양한 하이픈/공백 허용
+                        const palletMatch = item.match(/(?:-|–|—)\s*(\d[\d,]*)\s*p$/i);
+                        if (palletMatch) {
+                            // "-" 이전까지만 품명에 저장
+                            rowWithItem[5] = item.substring(0, item.indexOf('-')).trim();
+                            rowWithItem[9] = 'Pallet'; // 형태(인덱스 9)
+                            // 천단위 콤마 제거 후 숫자 파싱
+                            rowWithItem[7] = parseInt(String(palletMatch[1]).replace(/,/g, '')) || 0; // 수량(PLT)(인덱스 7)
+                            convertedData.push(rowWithItem);
+                            return;
+                        }
+                        
+                        // "-숫자b" 패턴 체크 (Bulk) - 다양한 하이픈/공백 허용
+                        const bulkMatch = item.match(/(?:-|–|—)\s*(\d[\d,]*)\s*b$/i);
+                        if (bulkMatch) {
+                            // "-" 이전까지만 품명에 저장
+                            rowWithItem[5] = item.substring(0, item.indexOf('-')).trim();
+                            rowWithItem[9] = 'Bulk'; // 형태(인덱스 9)
+                            rowWithItem[6] = parseInt(String(bulkMatch[1]).replace(/,/g, '')) || 0; // 수량(EA)(인덱스 6)
+                            convertedData.push(rowWithItem);
+                            return;
+                        }
+                        
+                        // 마지막 문자 확인 (패턴 없이 p나 b로만 끝나는 경우)
+                        const lastChar = item.charAt(item.length - 1).toLowerCase();
+                        if (lastChar === 'p') {
+                            rowWithItem[5] = item;
+                            rowWithItem[9] = 'Pallet'; // p로 끝나면 형태만 설정
+                        } else if (lastChar === 'b') {
+                            rowWithItem[5] = item;
+                            rowWithItem[9] = 'Bulk'; // b로 끝나면 형태만 설정
+                        } else {
+                            // p나 b로 끝나지 않으면 그대로 품명에 저장
+                            rowWithItem[5] = item;
+                        }
+                        
+                        convertedData.push(rowWithItem);
+                    });
+                } else {
+                    // "," 미포함시 - p/b 처리 필요
+                    
+                    // "-숫자p" 패턴 체크 (Pallet) - 다양한 하이픈/공백 허용
+                    const palletMatch = itemName.match(/(?:-|–|—)\s*(\d[\d,]*)\s*p$/i);
+                    if (palletMatch) {
+                        // "-" 이전까지만 품명에 저장
+                        newRow[5] = itemName.substring(0, itemName.indexOf('-')).trim();
+                        newRow[9] = 'Pallet'; // 형태(인덱스 9)
+                        newRow[7] = parseInt(String(palletMatch[1]).replace(/,/g, '')) || 0; // 수량(PLT)(인덱스 7)
+                        convertedData.push(newRow);
+                        return;
+                    }
+                    
+                    // "-숫자b" 패턴 체크 (Bulk) - 다양한 하이픈/공백 허용
+                    const bulkMatch = itemName.match(/(?:-|–|—)\s*(\d[\d,]*)\s*b$/i);
+                    if (bulkMatch) {
+                        // "-" 이전까지만 품명에 저장
+                        newRow[5] = itemName.substring(0, itemName.indexOf('-')).trim();
+                        newRow[9] = 'Bulk'; // 형태(인덱스 9)
+                        newRow[6] = parseInt(String(bulkMatch[1]).replace(/,/g, '')) || 0; // 수량(EA)(인덱스 6)
+                        convertedData.push(newRow);
+                        return;
+                    }
+                    
+                    // 마지막 문자 확인 (패턴 없이 p나 b로만 끝나는 경우)
+                    const lastChar = itemName.charAt(itemName.length - 1).toLowerCase();
+                    if (lastChar === 'p') {
+                        newRow[5] = itemName;
+                        newRow[9] = 'Pallet'; // p로 끝나면 형태만 설정
+                    } else if (lastChar === 'b') {
+                        newRow[5] = itemName;
+                        newRow[9] = 'Bulk'; // b로 끝나면 형태만 설정
+                    } else {
+                        // p나 b로 끝나지 않으면 그대로 저장
+                        newRow[5] = itemName;
+                    }
+                    
+                    convertedData.push(newRow);
+                }
             });
-            
-            console.log('변환된 데이터:', convertedData);
             
             // localStorage에 변환된 데이터 저장
             localStorage.setItem('convertedRawData', JSON.stringify({
@@ -470,7 +803,7 @@
                 try {
                     window.opener.loadConvertedRawData();
                 } catch (e) {
-                    console.log('opener 함수 호출 실패:', e);
+                    // 에러 무시
                 }
             }
         }
@@ -482,7 +815,6 @@
                 alert('등록할 행을 선택해주세요.');
                 return;
             }
-            console.log('등록할 데이터:', selectedRows);
             alert(`${selectedRows.length}개 행이 선택되었습니다. 등록 기능을 구현해주세요.`);
         }
     </script>
