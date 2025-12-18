@@ -45,6 +45,7 @@
             <!-- 전체 보기 및 초기화 -->
             <div class="filter-controls">
                 <button class="control-btn" onclick="addNewArrival()">신규입고</button>
+                <button class="control-btn" onclick="restructureDatabaseByConsignee()" style="background-color: #dc3545; color: white;">DB 재구성</button>
                 <select id="shipperFilterSelect" onchange="filterTableByShipper()" class="shipper-select">
                     <option value="">전체 화주</option>
                 </select>
@@ -248,7 +249,7 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" onclick="closeModal()">취소</button>
-                <button type="button" class="btn btn-danger" id="deleteArrivalBtn" style="display: block; background-color: #dc3545; color: white; padding: 10px 20px; border: none; border-radius: 4px; font-size: 13px; font-weight: bold; cursor: pointer;" onclick="window.handleDeleteArrival && window.handleDeleteArrival()">삭제</button>
+                <button type="button" class="btn btn-danger" id="deleteArrivalBtn" onclick="window.handleDeleteArrival && window.handleDeleteArrival()">삭제</button>
                 <button type="button" class="btn btn-primary" onclick="submitNewArrival()">등록</button>
                 <button type="button" class="btn btn-info" onclick="selectRawDataFile()">RawData 등록</button>
                 <input type="file" id="rawDataFileInput" style="display: none;" accept=".xlsx,.xls,.xlsm" onchange="handleRawDataFileAndOpenWindow(event)">
