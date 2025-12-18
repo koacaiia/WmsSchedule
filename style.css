@@ -997,16 +997,40 @@ tbody tr:hover {
 }
 
 .day-item {
-    border-bottom: 1px solid #f1f3f4;
     padding: 6px;
-    margin: 2px 0;
+    margin: 0;
     font-size: 60%;
     display: grid;
     grid-template-columns: 3fr 3fr 3fr 1fr;
     grid-gap: 8px;
     align-items: center;
-    border-radius: 4px;
+    border-radius: 0;
     transition: all 0.2s ease;
+    border-bottom: none;
+}
+
+/* 각 컨테이너 그룹의 첫 항목 */
+.day-item:first-of-type,
+.day-item.container-group-0:not(.container-group-0 + .container-group-0),
+.day-item.container-group-1:not(.container-group-1 + .container-group-1),
+.day-item.container-group-2:not(.container-group-2 + .container-group-2),
+.day-item.container-group-3:not(.container-group-3 + .container-group-3),
+.day-item.container-group-4:not(.container-group-4 + .container-group-4) {
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+    margin-top: 8px;
+}
+
+/* 각 컨테이너 그룹의 마지막 항목 */
+.day-item:last-of-type,
+.day-item.container-group-0:not(:has(+ .container-group-0)),
+.day-item.container-group-1:not(:has(+ .container-group-1)),
+.day-item.container-group-2:not(:has(+ .container-group-2)),
+.day-item.container-group-3:not(:has(+ .container-group-3)),
+.day-item.container-group-4:not(:has(+ .container-group-4)) {
+    border-bottom-left-radius: 4px;
+    border-bottom-right-radius: 4px;
+    margin-bottom: 8px;
 }
 
 .day-item.spec-40 {
@@ -1047,6 +1071,27 @@ tbody tr:hover {
     font-weight: 900;
 }
 
+/* 컨테이너 그룹별 배경색 (회색 그라데이션) */
+.day-item.container-group-0 {
+    background: linear-gradient(135deg, #ffffff 0%, #e0e0e0 100%);
+}
+
+.day-item.container-group-1 {
+    background: linear-gradient(135deg, #d8d8d8 0%, #c0c0c0 100%);
+}
+
+.day-item.container-group-2 {
+    background: linear-gradient(135deg, #c0c0c0 0%, #a8a8a8 100%);
+}
+
+.day-item.container-group-3 {
+    background: linear-gradient(135deg, #a8a8a8 0%, #909090 100%);
+}
+
+.day-item.container-group-4 {
+    background: linear-gradient(135deg, #909090 0%, #787878 100%);
+}
+
 /* 드래그 앤 드롭 스타일 */
 .day-item {
     cursor: move;
@@ -1054,10 +1099,20 @@ tbody tr:hover {
 }
 
 .day-item.dragging {
-    opacity: 0.5;
-    transform: rotate(5deg);
+    opacity: 0.7 !important;
+    background-color: #9e9e9e !important;
+    transform: scale(0.95);
     z-index: 1000;
     position: relative;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+    border: 2px solid #666 !important;
+}
+
+.day-item.dragging .item-shipper,
+.day-item.dragging .item-product,
+.day-item.dragging .item-container,
+.day-item.dragging .item-spec {
+    color: white !important;
 }
 
 .weekly-box.drag-over {

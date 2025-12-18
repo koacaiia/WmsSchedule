@@ -174,11 +174,12 @@ function addNewArrival(prefilledData = null) {
             importDateElement.value = today;
         }
         // 새로운 입고 등록일 때는 record-key 초기화 (삭제 버튼 숨기기)
-        currentModalRecordKey = null;
+       
         if (deleteBtn) {
             deleteBtn.style.display = 'none';
         }
     } else {
+         currentModalRecordKey = null;
         // 기존 데이터 편집할 때는 삭제 버튼 표시
         if (deleteBtn) {
             deleteBtn.style.display = 'block';
@@ -1395,14 +1396,14 @@ function getDateRange(period) {
         case 'today':
             return {
                 start: new Date(today),
-                end: new Date(today.getTime() + 24 * 60 * 60 * 1000 - 1)
+                end: new Date(today) // 오늘 하루만 (startDate와 endDate 동일)
             };
             
         case 'tomorrow':
             const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
             return {
                 start: tomorrow,
-                end: new Date(tomorrow.getTime() + 24 * 60 * 60 * 1000 - 1)
+                end: new Date(tomorrow) // 내일 하루만 (startDate와 endDate 동일)
             };
             
         case 'thisWeek':
@@ -1411,7 +1412,8 @@ function getDateRange(period) {
             const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek; // 월요일을 주의 시작으로
             startOfWeek.setDate(startOfWeek.getDate() + mondayOffset);
             
-            const endOfWeek = new Date(startOfWeek.getTime() + 7 * 24 * 60 * 60 * 1000 - 1);
+            const endOfWeek = new Date(startOfWeek);
+            endOfWeek.setDate(endOfWeek.getDate() + 6); // 월요일부터 일요일까지 (7일)
             return { start: startOfWeek, end: endOfWeek };
             
         case 'nextWeek':
@@ -1420,17 +1422,18 @@ function getDateRange(period) {
             const nextMondayOffset = nextWeekDayOfWeek === 0 ? 1 : 8 - nextWeekDayOfWeek;
             nextWeekStart.setDate(nextWeekStart.getDate() + nextMondayOffset);
             
-            const nextWeekEnd = new Date(nextWeekStart.getTime() + 7 * 24 * 60 * 60 * 1000 - 1);
+            const nextWeekEnd = new Date(nextWeekStart);
+            nextWeekEnd.setDate(nextWeekEnd.getDate() + 6); // 다음주 월요일부터 일요일까지 (7일)
             return { start: nextWeekStart, end: nextWeekEnd };
             
         case 'thisMonth':
             const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-            const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+            const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0); // 이번달 마지막 날
             return { start: startOfMonth, end: endOfMonth };
             
         case 'thisYear':
             const startOfYear = new Date(now.getFullYear(), 0, 1);
-            const endOfYear = new Date(now.getFullYear(), 11, 31, 23, 59, 59);
+            const endOfYear = new Date(now.getFullYear(), 11, 31);
             return { start: startOfYear, end: endOfYear };
             
         default:
@@ -1460,8 +1463,16 @@ function isDateInRange(date, startDate, endDate) {
     return targetDate >= startDate && targetDate <= endDate;
 }
 
+// Date 객체를 로컬 시간대 기준 yyyy-mm-dd 형식으로 변환하는 헬퍼 함수
+function formatDateToLocal(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+}
+
 // 기간별 데이터 필터링
-function filterByDatePeriod(period) {
+async function filterByDatePeriod(period) {
     console.log(`📅 ${period} 기간으로 데이터 필터링 시작...`);
     
     // 활성 버튼 스타일 변경
@@ -1476,18 +1487,41 @@ function filterByDatePeriod(period) {
     
     console.log(`📊 필터링 범위: ${dateRange.start.toLocaleDateString()} ~ ${dateRange.end.toLocaleDateString()}`);
     
-    const filteredData = allInCargoData.filter(item => {
-        const recordDate = item.data.date;
-        return isDateInRange(recordDate, dateRange.start, dateRange.end);
-    });
+    // startDate와 endDate input 필드 업데이트 (yyyy-mm-dd 형식, 로컬 시간대 기준)
+    const startDateInput = document.getElementById('startDate');
+    const endDateInput = document.getElementById('endDate');
     
-    console.log(`✅ ${filteredData.length}개 레코드가 필터링됨 (전체 ${allInCargoData.length}개 중)`);
+    if (startDateInput && endDateInput) {
+        const startStr = formatDateToLocal(dateRange.start);
+        const endStr = formatDateToLocal(dateRange.end);
+        startDateInput.value = startStr;
+        endDateInput.value = endStr;
+        console.log(`📅 날짜 입력 필드 업데이트: ${startStr} ~ ${endStr}`);
+    }
     
-    displayFilteredData(filteredData, `${period} (${dateRange.start.toLocaleDateString()} ~ ${dateRange.end.toLocaleDateString()})`);
+    // getInCargoLeafData() 함수 호출하여 데이터 가져오기
+    try {
+        const startStr = formatDateToLocal(dateRange.start);
+        const endStr = formatDateToLocal(dateRange.end);
+        
+        console.log(`🔄 getInCargoLeafData() 호출: ${startStr} ~ ${endStr}`);
+        const leafData = await getInCargoLeafData(startStr, endStr);
+        
+        console.log(`✅ ${leafData.length}개 레코드 로드됨`);
+        
+        // 전역 변수 업데이트
+        allInCargoData = leafData;
+        
+        // 필터링된 데이터 표시
+        displayFilteredData(leafData, `${period} (${dateRange.start.toLocaleDateString()} ~ ${dateRange.end.toLocaleDateString()})`);
+    } catch (error) {
+        console.error('❌ 데이터 로드 실패:', error);
+        alert(`데이터 로드 중 오류가 발생했습니다: ${error.message}`);
+    }
 }
 
 // 사용자 지정 날짜 범위로 필터링
-function filterByCustomDateRange() {
+async function filterByCustomDateRange() {
     const startDateInput = document.getElementById('startDate');
     const endDateInput = document.getElementById('endDate');
     
@@ -1509,14 +1543,25 @@ function filterByCustomDateRange() {
     // 모든 버튼 비활성화
     document.querySelectorAll('.date-btn').forEach(btn => btn.classList.remove('active'));
     
-    const filteredData = allInCargoData.filter(item => {
-        const recordDate = item.data.date;
-        return isDateInRange(recordDate, startDate, endDate);
-    });
-    
-    console.log(`✅ ${filteredData.length}개 레코드가 필터링됨`);
-    
-    displayFilteredData(filteredData, `${startDate.toLocaleDateString()} ~ ${endDate.toLocaleDateString()}`);
+    // getInCargoLeafData() 함수 호출하여 데이터 가져오기
+    try {
+        const startStr = startDateInput.value; // yyyy-mm-dd 형식
+        const endStr = endDateInput.value; // yyyy-mm-dd 형식
+        
+        console.log(`🔄 getInCargoLeafData() 호출: ${startStr} ~ ${endStr}`);
+        const leafData = await getInCargoLeafData(startStr, endStr);
+        
+        console.log(`✅ ${leafData.length}개 레코드 로드됨`);
+        
+        // 전역 변수 업데이트
+        allInCargoData = leafData;
+        
+        // 필터링된 데이터 표시
+        displayFilteredData(leafData, `${startDate.toLocaleDateString()} ~ ${endDate.toLocaleDateString()}`);
+    } catch (error) {
+        console.error('❌ 데이터 로드 실패:', error);
+        alert(`데이터 로드 중 오류가 발생했습니다: ${error.message}`);
+    }
 }
 
 // 필터링된 데이터를 테이블에 표시
@@ -2036,7 +2081,7 @@ function populateDayBox(dayName, shipperGroups) {
             itemClass += ' spec-40 spec-40FT';
         } else if (spec === '20FT') {
             itemClass += ' spec-20FT';
-        } else if (spec === 'LCL') {
+        } else if (spec === 'LCL'|| spec.includes('L')) {
             itemClass += ' spec-LCL';
         }
         if (shape === 'Bulk') {
@@ -2080,45 +2125,68 @@ function populateDayBoxWithItems(dayName, dayData, dateStr) {
         return;
     }
     
+    // 컨테이너별로 그룹화
+    const containerGroups = {};
+    dayData.forEach((item) => {
+        const container = item.data.container || 'N/A';
+        if (!containerGroups[container]) {
+            containerGroups[container] = [];
+        }
+        containerGroups[container].push(item);
+    });
+    
+    // 그룹별로 색상 인덱스 부여
+    const containerList = Object.keys(containerGroups);
     let html = '';
     
-    // 개별 항목별로 표시 (화주명, 품명, 컨테이너 번호, Spec)
-    dayData.forEach((item, index) => {
-        const record = item.data;
-        let shipper = record.consignee || record.shipper || '미분류';
+    containerList.forEach((container, groupIndex) => {
+        const items = containerGroups[container];
+        const colorClass = `container-group-${groupIndex % 5}`; // 5가지 색상 순환
         
-        // consignee 값에서 괄호 안의 값만 추출
-        const parenthesesMatch = shipper.match(/\(([^)]+)\)/);
-        if (parenthesesMatch) {
-            shipper = parenthesesMatch[1];
-        }
-        
-        const product = record.description || record.itemName || '미분류';
-        const container = record.container || 'N/A';
-        const spec = record.spec || '';
-        const shape = record.shape || '';
-        
-        // 조건부 클래스 추가
-        let itemClass = 'day-item';
-        if (spec === '40FT') {
-            itemClass += ' spec-40 spec-40FT';
-        } else if (spec === '20FT') {
-            itemClass += ' spec-20FT';
-        } else if (spec === 'LCL') {
-            itemClass += ' spec-LCL';
-        }
-        if (shape === 'Bulk') {
-            itemClass += ' shape-bulk';
-        }
-        
-        html += `
-            <div class="${itemClass}">
-                <div class="item-shipper">${shipper}</div>
-                <div class="item-product">${product}</div>
-                <div class="item-container">${container}</div>
-                <div class="item-spec">${spec || 'N/A'}</div>
-            </div>
-        `;
+        items.forEach((item, itemIndex) => {
+            const record = item.data;
+            let shipper = record.consignee || record.shipper || '미분류';
+            
+            // consignee 값에서 괄호 안의 값만 추출
+            const parenthesesMatch = shipper.match(/\(([^)]+)\)/);
+            if (parenthesesMatch) {
+                shipper = parenthesesMatch[1];
+            }
+            
+            const product = record.description || record.itemName || '미분류';
+            const spec = record.spec || '';
+            const shape = record.shape || '';
+            
+            // 조건부 클래스 추가
+            let itemClass = `day-item ${colorClass}`;
+            if (spec === '40FT') {
+                itemClass += ' spec-40 spec-40FT';
+            } else if (spec === '20FT') {
+                itemClass += ' spec-20FT';
+            } else if (spec === 'LCL'|| spec.includes('L')) {
+                itemClass += ' spec-LCL';
+            }
+            if (shape === 'Bulk') {
+                itemClass += ' shape-bulk';
+            }
+            
+            // 컨테이너 그룹 ID 추가 (같은 컨테이너 번호끼리 묶기 위해)
+            const containerGroupId = container.replace(/[^a-zA-Z0-9]/g, '_');
+            
+            // 첫 번째 항목에만 컨테이너와 Spec 표시, 나머지는 빈 문자열
+            // spec은 실제 값이 있고 '0'이 아닐 때만 표시
+            const containerDisplay = itemIndex === 0 ? container : '';
+            const specDisplay = itemIndex === 0 ? (spec && spec !== '0' ? spec : '') : '';
+            
+            html += `
+                <div class="${itemClass}" data-container-group="${containerGroupId}">
+                    <div class="item-shipper">${shipper}</div>
+                    <div class="item-product">${product}</div>
+                    <div class="item-container">${containerDisplay}</div>
+                    <div class="item-spec">${specDisplay}</div>
+                </div>
+            `;
+        });
     });
     
     contentElement.innerHTML = html;
@@ -2403,7 +2471,15 @@ function addDragAndDropListeners() {
 
 function handleDragStart(e) {
     draggedItem = this;
-    this.classList.add('dragging');
+    
+    // 같은 컨테이너 그룹의 모든 아이템 찾기
+    const containerGroup = this.dataset.containerGroup;
+    const groupItems = containerGroup ? 
+        document.querySelectorAll(`[data-container-group="${containerGroup}"]`) : 
+        [this];
+    
+    // 모든 그룹 아이템에 dragging 클래스 추가
+    groupItems.forEach(item => item.classList.add('dragging'));
     
     // 드래그된 아이템의 데이터 추출
     const shipper = this.querySelector('.item-shipper').textContent;
@@ -2415,7 +2491,8 @@ function handleDragStart(e) {
         container: container,
         shipper: shipper,
         product: product,
-        spec: spec
+        spec: spec,
+        groupCount: groupItems.length
     });
     
     // 드래그 데이터를 더 확실하게 저장
@@ -2425,18 +2502,30 @@ function handleDragStart(e) {
         product: product,
         spec: spec,
         element: this,
-        originalDate: null // 나중에 Firebase에서 찾아서 설정
+        originalDate: null, // 나중에 Firebase에서 찾아서 설정
+        groupItems: Array.from(groupItems), // 그룹 아이템들 저장
+        containerGroup: containerGroup
     };
     
-    // Firebase에서 해당 컨테이너 데이터 찾기
-    findContainerInFirebase(container, shipper, product, (data) => {
-        if (data) {
-            draggedItemData.firebaseData = data;
-            draggedItemData.originalDate = data.date;
-            console.log('✅ Firebase 데이터 찾기 성공:', data);
-        } else {
-            console.error('❌ Firebase에서 데이터를 찾을 수 없습니다');
-        }
+    // Firebase에서 해당 컨테이너 데이터 찾기 (모든 항목)
+    const firebasePromises = [];
+    groupItems.forEach(item => {
+        const itemShipper = item.querySelector('.item-shipper').textContent;
+        const itemProduct = item.querySelector('.item-product').textContent;
+        const itemContainer = item.querySelector('.item-container').textContent;
+        
+        firebasePromises.push(
+            new Promise((resolve) => {
+                findContainerInFirebase(itemContainer, itemShipper, itemProduct, (data) => {
+                    resolve(data);
+                });
+            })
+        );
+    });
+    
+    Promise.all(firebasePromises).then(results => {
+        draggedItemData.firebaseDataArray = results.filter(d => d !== null);
+        console.log(`✅ Firebase 데이터 찾기 완료: ${draggedItemData.firebaseDataArray.length}개`);
     });
     
     e.dataTransfer.effectAllowed = 'move';
@@ -2444,7 +2533,11 @@ function handleDragStart(e) {
 }
 
 function handleDragEnd(e) {
-    this.classList.remove('dragging');
+    // 모든 dragging 클래스 제거 (그룹 포함)
+    document.querySelectorAll('.dragging').forEach(item => {
+        item.classList.remove('dragging');
+    });
+    
     draggedItem = null;
     
     // 모든 드롭 영역의 하이라이트 제거
@@ -2586,16 +2679,34 @@ function handleDropLogic(e, targetElement) {
         return false;
     }
     
-    console.log(`📅 ${draggedItemData.container}를 ${targetDayKorean}요일(${newDate})로 이동`);
-    
-    // Firebase 데이터 확인
-    if (draggedItemData.firebaseData && draggedItemData.firebaseData.key) {
-        // Firebase에서 날짜 업데이트
-        updateContainerDate(draggedItemData.firebaseData.key, newDate, () => {
-            console.log('✅ 날짜 업데이트 완료, 새로고침 중...');
-            alert(`${draggedItemData.container}가 ${targetDayKorean}요일로 이동되었습니다!`);
-            // 데이터 새로고침
-            loadWeeklyData();
+    // Firebase 데이터 확인 - 그룹 전체 업데이트
+    if (draggedItemData.firebaseDataArray && draggedItemData.firebaseDataArray.length > 0) {
+        console.log(`🔄 ${draggedItemData.firebaseDataArray.length}개 항목 날짜 업데이트 시작...`);
+        
+        let updateCount = 0;
+        let totalCount = draggedItemData.firebaseDataArray.length;
+        
+        // 모든 항목의 날짜를 순차적으로 업데이트
+        draggedItemData.firebaseDataArray.forEach((data, index) => {
+            if (data && data.key) {
+                updateContainerDate(data.key, newDate, () => {
+                    updateCount++;
+                    console.log(`✅ ${updateCount}/${totalCount} 업데이트 완료`);
+                    
+                    // 모든 업데이트가 완료되면 새로고침
+                    if (updateCount === totalCount) {
+                        console.log('✅ 모든 날짜 업데이트 완료, 새로고침 중...');
+                        alert(`${draggedItemData.container} 관련 ${totalCount}개 항목이 ${targetDayKorean}요일로 이동되었습니다!`);
+                        loadWeeklyData();
+                    }
+                });
+            } else {
+                totalCount--;
+                if (updateCount === totalCount && totalCount > 0) {
+                    alert(`${draggedItemData.container} 관련 ${totalCount}개 항목이 ${targetDayKorean}요일로 이동되었습니다!`);
+                    loadWeeklyData();
+                }
+            }
         });
     } else {
         console.error('❌ Firebase 데이터가 없어 업데이트할 수 없습니다.');
@@ -3289,6 +3400,109 @@ function generateTotalSummary(weekData) {
     generateTotalHeaderSummary(weekData);
 }
 
+// 공통 헬퍼: 화주별, Spec별 컨테이너 집계 및 정규화
+function aggregateShipperSpecData(data, debugLabel = '') {
+    const shipperSpecCounts = {};
+    
+    data.forEach(item => {
+        const record = item.data;
+        let shipper = record.consignee || record.shipper || '미분류';
+        
+        // consignee 값에서 괄호 안의 값만 추출
+        const parenthesesMatch = shipper.match(/\(([^)]+)\)/);
+        if (parenthesesMatch) {
+            shipper = parenthesesMatch[1];
+        }
+        
+        let spec = record.spec || '기타';
+        const container = record.container || '';
+        
+        // Spec 값 정규화 (대소문자, 공백 처리)
+        if (spec) {
+            spec = spec.toString().trim().toUpperCase();
+            // 다양한 40FT 표기 방식 통합
+            if (spec.includes('40') && spec.includes('F')) {
+                spec = '40FT';
+            }
+            // 다양한 20FT 표기 방식 통합  
+            else if (spec.includes('20') && spec.includes('F')) {
+                spec = '20FT';
+            }
+            // LCL 처리
+            else if (spec.includes('LCL') || spec.includes('L')) {
+                spec = 'LCL';
+            }
+        }
+        
+        if (!shipperSpecCounts[shipper]) {
+            shipperSpecCounts[shipper] = {};
+        }
+        
+        if (!shipperSpecCounts[shipper][spec]) {
+            shipperSpecCounts[shipper][spec] = new Set();
+        }
+        
+        if (container) {
+            shipperSpecCounts[shipper][spec].add(container);
+        }
+    });
+    
+    if (debugLabel) {
+        console.log(`📊 ${debugLabel} 화주별 Spec 집계:`, shipperSpecCounts);
+    }
+    
+    return shipperSpecCounts;
+}
+
+// 공통 헬퍼: 화주별 헤더 요약 HTML 생성
+function generateShipperHeaderSummaryHtml(shipperSpecCounts, maxShippers) {
+    // 화주별로 컨테이너 총 수 계산하여 정렬
+    const shipperTotalCounts = {};
+    Object.keys(shipperSpecCounts).forEach(shipper => {
+        const allContainers = new Set();
+        Object.values(shipperSpecCounts[shipper]).forEach(containers => {
+            containers.forEach(container => allContainers.add(container));
+        });
+        shipperTotalCounts[shipper] = allContainers.size;
+    });
+    
+    const sortedShippers = Object.entries(shipperTotalCounts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, maxShippers);
+    
+    let summaryHtml = '';
+    sortedShippers.forEach(([shipper, totalCount]) => {
+        // 해당 화주의 spec별 컨테이너 수 가져오기
+        const shipperSpecs = Object.entries(shipperSpecCounts[shipper])
+            .sort((a, b) => b[1].size - a[1].size);
+        
+        // 화주명 표시
+        summaryHtml += `<span class="summary-shipper-name">${shipper}:</span>`;
+        
+        // 각 Spec별 컨테이너 수를 색상별로 표시 (숫자만)
+        shipperSpecs.forEach(([spec, containers]) => {
+            const count = containers.size;
+            let specClass = '';
+            
+            if (spec === '40FT') {
+                specClass = 'spec-40ft';
+            } else if (spec === '20FT') {
+                specClass = 'spec-20ft';
+            } else if (spec === 'LCL' || spec.includes('L')) {
+                specClass = 'spec-lcl';
+            }
+            
+            if (specClass) {
+                summaryHtml += `<span class="summary-spec-item ${specClass}">${count}</span>`;
+            }
+        });
+        
+        summaryHtml += `<span class="summary-separator"> </span>`;
+    });
+    
+    return summaryHtml;
+}
+
 // 요일별 헤더 요약 생성 - 화주별 주요 Spec 색상으로 표시
 function generateDayHeaderSummary(dayName, dayData) {
     console.log(`🔍 generateDayHeaderSummary 호출: ${dayName}, 데이터 수: ${dayData ? dayData.length : 0}`);
@@ -3315,117 +3529,9 @@ function generateDayHeaderSummary(dayName, dayData) {
         return;
     }
     
-    // 화주별, Spec별 컨테이너 수 집계
-    const shipperSpecCounts = {};
-    
-    dayData.forEach(item => {
-        const record = item.data;
-        let shipper = record.consignee || record.shipper || '미분류';
-        
-        // consignee 값에서 괄호 안의 값만 추출
-        const parenthesesMatch = shipper.match(/\(([^)]+)\)/);
-        if (parenthesesMatch) {
-            shipper = parenthesesMatch[1];
-        }
-        
-        let spec = record.spec || '기타';
-        const container = record.container || '';
-        
-        // Spec 값 정규화 (대소문자, 공백 처리)
-        if (spec) {
-            spec = spec.toString().trim().toUpperCase();
-            // 다양한 40FT 표기 방식 통합
-            if (spec.includes('40') && spec.includes('F')) {
-                spec = '40FT';
-            }
-            // 다양한 20FT 표기 방식 통합  
-            else if (spec.includes('20') && spec.includes('F')) {
-                spec = '20FT';
-            }
-            // LCL 처리
-            else if (spec.includes('LCL')) {
-                spec = 'LCL';
-            }
-        }
-        
-        // 디버깅: Spec 값 정규화 및 확인
-        console.log(`📋 ${dayName} 레코드:`, {
-            원본화주: record.consignee || record.shipper,
-            처리된화주: shipper,
-            원본spec: record.spec,
-            정규화spec: spec,
-            container: container
-        });
-        
-        if (!shipperSpecCounts[shipper]) {
-            shipperSpecCounts[shipper] = {};
-        }
-        
-        if (!shipperSpecCounts[shipper][spec]) {
-            shipperSpecCounts[shipper][spec] = new Set();
-        }
-        
-        if (container) {
-            shipperSpecCounts[shipper][spec].add(container);
-        }
-    });
-    
-    // 디버깅: 집계 결과 출력
-    console.log(`📊 ${dayName} 화주별 Spec 집계:`, shipperSpecCounts);
-    
-    // 화주별로 컨테이너 총 수 계산하여 정렬
-    const shipperTotalCounts = {};
-    Object.keys(shipperSpecCounts).forEach(shipper => {
-        const allContainers = new Set();
-        Object.values(shipperSpecCounts[shipper]).forEach(containers => {
-            containers.forEach(container => allContainers.add(container));
-        });
-        shipperTotalCounts[shipper] = allContainers.size;
-    });
-    
-    const sortedShippers = Object.entries(shipperTotalCounts)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 4); // 상위 4개 화주 표시
-    
-    console.log(`📊 ${dayName} 화주 데이터:`, sortedShippers);
-    
-    let summaryHtml = '';
-    sortedShippers.forEach(([shipper, totalCount]) => {
-        // 해당 화주의 spec별 컨테이너 수 가져오기
-        const shipperSpecs = Object.entries(shipperSpecCounts[shipper])
-            .sort((a, b) => b[1].size - a[1].size);
-        
-        // 디버깅: 화주별 상세 정보 출력
-        console.log(`🔍 ${dayName} 화주 "${shipper}" 분석:`, {
-            전체컨테이너수: totalCount,
-            spec별상세: shipperSpecs.map(([spec, containers]) => ({
-                spec: spec,
-                컨테이너수: containers.size,
-                컨테이너목록: Array.from(containers)
-            }))
-        });
-        
-        // 화주명 표시
-        summaryHtml += `<span class="summary-shipper-name">${shipper}:</span>`;
-        
-        // 각 Spec별 컨테이너 수를 색상별로 표시 (숫자만)
-        shipperSpecs.forEach(([spec, containers]) => {
-            const count = containers.size;
-            let specClass = 'spec-other';
-            
-            if (spec === '40FT') {
-                specClass = 'spec-40ft'; // red
-            } else if (spec === '20FT') {
-                specClass = 'spec-20ft'; // white
-            } else if (spec === 'LCL') {
-                specClass = 'spec-lcl'; // red
-            }
-            
-            summaryHtml += `<span class="summary-spec-item ${specClass}">${count}</span>`;
-        });
-        
-        summaryHtml += `<span class="summary-separator"> </span>`;
-    });
+    // 공통 헬퍼 함수 사용
+    const shipperSpecCounts = aggregateShipperSpecData(dayData, dayName);
+    const summaryHtml = generateShipperHeaderSummaryHtml(shipperSpecCounts, 4);
     
     console.log(`✅ ${dayName} 헤더 HTML:`, summaryHtml);
     headerSummaryElement.innerHTML = summaryHtml;
@@ -3445,93 +3551,9 @@ function generateTotalHeaderSummary(weekData) {
         return;
     }
     
-    // 화주별, Spec별 컨테이너 수 집계
-    const shipperSpecCounts = {};
-    
-    weekData.forEach(item => {
-        const record = item.data;
-        let shipper = record.consignee || record.shipper || '미분류';
-        
-        // consignee 값에서 괄호 안의 값만 추출
-        const parenthesesMatch = shipper.match(/\(([^)]+)\)/);
-        if (parenthesesMatch) {
-            shipper = parenthesesMatch[1];
-        }
-        
-        let spec = record.spec || '기타';
-        const container = record.container || '';
-        
-        // Spec 값 정규화 (대소문자, 공백 처리)
-        if (spec) {
-            spec = spec.toString().trim().toUpperCase();
-            // 다양한 40FT 표기 방식 통합
-            if (spec.includes('40') && spec.includes('F')) {
-                spec = '40FT';
-            }
-            // 다양한 20FT 표기 방식 통합  
-            else if (spec.includes('20') && spec.includes('F')) {
-                spec = '20FT';
-            }
-            // LCL 처리
-            else if (spec.includes('LCL')) {
-                spec = 'LCL';
-            }
-        }
-        
-        if (!shipperSpecCounts[shipper]) {
-            shipperSpecCounts[shipper] = {};
-        }
-        
-        if (!shipperSpecCounts[shipper][spec]) {
-            shipperSpecCounts[shipper][spec] = new Set();
-        }
-        
-        if (container) {
-            shipperSpecCounts[shipper][spec].add(container);
-        }
-    });
-    
-    // 화주별로 컨테이너 총 수 계산하여 정렬
-    const shipperTotalCounts = {};
-    Object.keys(shipperSpecCounts).forEach(shipper => {
-        const allContainers = new Set();
-        Object.values(shipperSpecCounts[shipper]).forEach(containers => {
-            containers.forEach(container => allContainers.add(container));
-        });
-        shipperTotalCounts[shipper] = allContainers.size;
-    });
-    
-    const sortedShippers = Object.entries(shipperTotalCounts)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 6); // 상위 6개 화주 표시
-    
-    let summaryHtml = '';
-    sortedShippers.forEach(([shipper, totalCount]) => {
-        // 해당 화주의 spec별 컨테이너 수 가져오기
-        const shipperSpecs = Object.entries(shipperSpecCounts[shipper])
-            .sort((a, b) => b[1].size - a[1].size);
-        
-        // 화주명 표시
-        summaryHtml += `<span class="summary-shipper-name">${shipper}:</span>`;
-        
-        // 각 Spec별 컨테이너 수를 색상별로 표시 (숫자만)
-        shipperSpecs.forEach(([spec, containers]) => {
-            const count = containers.size;
-            let specClass = 'spec-other';
-            
-            if (spec === '40FT') {
-                specClass = 'spec-40ft'; // red
-            } else if (spec === '20FT') {
-                specClass = 'spec-20ft'; // white
-            } else if (spec === 'LCL') {
-                specClass = 'spec-lcl'; // red
-            }
-            
-            summaryHtml += `<span class="summary-spec-item ${specClass}">${count}</span>`;
-        });
-        
-        summaryHtml += `<span class="summary-separator"> </span>`;
-    });
+    // 공통 헬퍼 함수 사용
+    const shipperSpecCounts = aggregateShipperSpecData(weekData);
+    const summaryHtml = generateShipperHeaderSummaryHtml(shipperSpecCounts, 6);
     
     headerSummaryElement.innerHTML = summaryHtml;
 }
@@ -3655,77 +3677,163 @@ function exportWeeklySummary() {
     }
 }
 
-// Firebase에서 InCargo leaf node 데이터 가져오는 함수
-async function getInCargoLeafData() {
+// Firebase에서 InCargo leaf node 데이터 가져오는 함수 (날짜 범위 지원)
+async function getInCargoLeafData(startDate, endDate) {
     try {
         console.log('🔍 InCargo leaf node 데이터 검색 시작...');
+        console.log('📅 날짜 범위:', startDate, '~', endDate);
         
-        const inCargoRef = window.firebaseRef(window.firebaseDb, 'DeptName/WareHouseDept2/InCargo');
-        
-        return new Promise((resolve, reject) => {
-            window.firebaseOnValue(inCargoRef, (snapshot) => {
-                if (snapshot.exists()) {
-                    const data = snapshot.val();
-                    const leafNodes = [];
-                    
-                    console.log('📊 InCargo 데이터 구조 분석 중...');
-                    
-                    // 재귀적으로 leaf node 찾기
-                    function findLeafNodes(obj, path = '') {
-                        if (obj === null || obj === undefined) return;
+        // 날짜 범위가 지정되지 않으면 전체 데이터 가져오기
+        if (!startDate || !endDate) {
+            console.log('⚠️ 날짜 범위 미지정 - 전체 데이터 조회');
+            const inCargoRef = window.firebaseRef(window.firebaseDb, 'DeptName/WareHouseDept2/InCargo');
+            
+            return new Promise((resolve, reject) => {
+                window.firebaseOnValue(inCargoRef, (snapshot) => {
+                    if (snapshot.exists()) {
+                        const data = snapshot.val();
+                        const leafNodes = [];
                         
-                        if (typeof obj === 'object' && !Array.isArray(obj)) {
-                            const keys = Object.keys(obj);
-                            let hasChildObjects = false;
+                        console.log('📊 InCargo 데이터 구조 분석 중...');
+                        
+                        // 재귀적으로 leaf node 찾기
+                        function findLeafNodes(obj, path = '') {
+                            if (obj === null || obj === undefined) return;
                             
-                            // 하위 객체가 있는지 확인
-                            keys.forEach(key => {
-                                const value = obj[key];
-                                if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-                                    // 더 깊은 객체가 있는지 확인
-                                    const hasNestedObjects = Object.values(value).some(v => 
-                                        typeof v === 'object' && v !== null && !Array.isArray(v)
-                                    );
-                                    
-                                    const currentPath = path ? `${path}/${key}` : key;
-                                    
-                                    if (hasNestedObjects) {
-                                        hasChildObjects = true;
-                                        findLeafNodes(value, currentPath);
-                                    } else {
-                                        // 이것이 leaf node (실제 데이터)
-                                        leafNodes.push({
-                                            path: currentPath,
-                                            key: key,
-                                            data: value,
-                                            timestamp: value.createdAt || value.updatedAt || new Date().toISOString()
-                                        });
+                            if (typeof obj === 'object' && !Array.isArray(obj)) {
+                                const keys = Object.keys(obj);
+                                
+                                keys.forEach(key => {
+                                    const value = obj[key];
+                                    if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+                                        const hasNestedObjects = Object.values(value).some(v => 
+                                            typeof v === 'object' && v !== null && !Array.isArray(v)
+                                        );
+                                        
+                                        const currentPath = path ? `${path}/${key}` : key;
+                                        
+                                        if (hasNestedObjects) {
+                                            findLeafNodes(value, currentPath);
+                                        } else {
+                                            leafNodes.push({
+                                                path: currentPath,
+                                                key: key,
+                                                data: value,
+                                                timestamp: value.createdAt || value.updatedAt || new Date().toISOString()
+                                            });
+                                        }
                                     }
-                                }
-                            });
+                                });
+                            }
                         }
+                        
+                        findLeafNodes(data);
+                        
+                        leafNodes.sort((a, b) => {
+                            const timestampA = new Date(a.timestamp);
+                            const timestampB = new Date(b.timestamp);
+                            return timestampB - timestampA;
+                        });
+                        
+                        console.log(`✅ 총 ${leafNodes.length}개의 leaf node 발견`);
+                        resolve(leafNodes);
+                    } else {
+                        console.log('⚠️ InCargo 경로에 데이터가 없습니다.');
+                        resolve([]);
                     }
-                    
-                    findLeafNodes(data);
-                    
-                    // 최신순으로 정렬 (timestamp 기준)
-                    leafNodes.sort((a, b) => {
-                        const timestampA = new Date(a.timestamp);
-                        const timestampB = new Date(b.timestamp);
-                        return timestampB - timestampA; // 최신순
-                    });
-                    
-                    console.log(`✅ 총 ${leafNodes.length}개의 leaf node 발견`);
-                    console.log('📋 발견된 데이터:', leafNodes);
-                    
-                    resolve(leafNodes);
-                    
-                } else {
-                    console.log('⚠️ InCargo 경로에 데이터가 없습니다.');
-                    resolve([]);
-                }
-            }, { onlyOnce: true });
+                }, { onlyOnce: true });
+            });
+        }
+        
+        // 날짜 범위가 지정된 경우 - 해당 날짜들의 데이터만 가져오기
+        console.log('📆 날짜 범위 지정됨 - 범위 내 데이터만 조회');
+        
+        // 시작일부터 종료일까지 날짜 배열 생성
+        const dateArray = [];
+        const currentDate = new Date(startDate);
+        const endDateObj = new Date(endDate);
+        
+        while (currentDate <= endDateObj) {
+            dateArray.push(new Date(currentDate));
+            currentDate.setDate(currentDate.getDate() + 1);
+        }
+        
+        console.log(`📅 조회할 날짜: ${dateArray.length}일`);
+        
+        // 각 날짜별로 데이터 가져오기
+        const allLeafNodes = [];
+        
+        for (const date of dateArray) {
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            const datePath = `${year}/${month}/${day}`;
+            const dateStr = `${year}-${month}-${day}`;
+            
+            console.log(`🔍 ${dateStr} 데이터 조회 중... (경로: ${datePath})`);
+            
+            const dateRef = window.firebaseRef(window.firebaseDb, `DeptName/WareHouseDept2/InCargo/${datePath}`);
+            
+            // 각 날짜별로 Promise 생성
+            await new Promise((resolve) => {
+                window.firebaseOnValue(dateRef, (snapshot) => {
+                    if (snapshot.exists()) {
+                        const data = snapshot.val();
+                        console.log(`  ✅ ${dateStr} 데이터 존재: ${Object.keys(data).length}개 레코드`);
+                        
+                        // 해당 날짜의 모든 레코드 추가
+                        Object.entries(data).forEach(([key, value]) => {
+                            // value가 객체인지 확인 (실제 데이터인지)
+                            if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+                                // 하위에 객체가 더 있는지 확인
+                                const hasNestedObjects = Object.values(value).some(v => 
+                                    typeof v === 'object' && v !== null && !Array.isArray(v)
+                                );
+                                
+                                if (hasNestedObjects) {
+                                    // 화주별로 그룹화된 경우 (consignee/recordKey 구조)
+                                    Object.entries(value).forEach(([subKey, subValue]) => {
+                                        if (typeof subValue === 'object' && subValue !== null && !Array.isArray(subValue)) {
+                                            const fullPath = `${datePath}/${key}/${subKey}`;
+                                            allLeafNodes.push({
+                                                path: fullPath,
+                                                key: subKey,
+                                                data: subValue,
+                                                timestamp: subValue.createdAt || subValue.updatedAt || dateStr
+                                            });
+                                        }
+                                    });
+                                } else {
+                                    // 직접 레코드인 경우
+                                    const fullPath = `${datePath}/${key}`;
+                                    allLeafNodes.push({
+                                        path: fullPath,
+                                        key: key,
+                                        data: value,
+                                        timestamp: value.createdAt || value.updatedAt || dateStr
+                                    });
+                                }
+                            }
+                        });
+                    } else {
+                        console.log(`  ⚠️ ${dateStr} 데이터 없음`);
+                    }
+                    resolve();
+                }, { onlyOnce: true });
+            });
+        }
+        
+        // 최신순으로 정렬
+        allLeafNodes.sort((a, b) => {
+            const timestampA = new Date(a.timestamp);
+            const timestampB = new Date(b.timestamp);
+            return timestampB - timestampA;
         });
+        
+        console.log(`✅ 날짜 범위 내 총 ${allLeafNodes.length}개의 leaf node 발견`);
+        console.log('📋 발견된 데이터:', allLeafNodes);
+        
+        return allLeafNodes;
         
     } catch (error) {
         console.error('❌ InCargo 데이터 가져오기 실패:', error);
@@ -3734,9 +3842,24 @@ async function getInCargoLeafData() {
 }
 
 // 페이지 로드 시 InCargo 데이터로 테이블 채우기
-async function loadInCargoDataOnPageLoad() {
+async function loadInCargoDataOnPageLoad(startDate = null, endDate = null) {
     try {
         console.log('🚀 페이지 로드 시 InCargo 데이터 로드 시작...');
+        
+        // 시작일, 종료일이 제공되지 않으면 입력 필드에서 가져오기
+        if (!startDate || !endDate) {
+            const startDateInput = document.getElementById('startDate');
+            const endDateInput = document.getElementById('endDate');
+            
+            if (startDateInput && startDateInput.value) {
+                startDate = startDateInput.value; // yyyy-mm-dd 형식
+            }
+            if (endDateInput && endDateInput.value) {
+                endDate = endDateInput.value; // yyyy-mm-dd 형식
+            }
+            
+            console.log('📅 입력 필드에서 날짜 가져옴:', { startDate, endDate });
+        }
         
         // Firebase 연결 확인
         if (!window.firebaseDb) {
@@ -3750,7 +3873,8 @@ async function loadInCargoDataOnPageLoad() {
             return;
         }
         
-        const leafData = await getInCargoLeafData();
+        // 날짜 범위와 함께 데이터 가져오기
+        const leafData = await getInCargoLeafData(startDate, endDate);
         
         if (leafData.length > 0) {
             console.log(`📥 ${leafData.length}개의 레코드를 전역 변수에 저장...`);
@@ -3909,3 +4033,208 @@ window.handleDeleteArrival = async function() {
         alert(`데이터 삭제 중 오류가 발생했습니다:\n${error.message}`);
     }
 };
+
+// DB 재구성 함수 - consignee 경로 기반으로 재구성
+async function restructureDatabaseByConsignee() {
+    if (!confirm('DB를 재구성하시겠습니까?\n\n모든 데이터를 "DeptName/WareHouseDept2/InCargo/yyyy/mm/dd/consignee/" 경로로 재구성합니다.')) {
+        return;
+    }
+    
+    try {
+        console.log('🔧 DB 재구성 시작...');
+        
+        // 진행 상황 표시
+        const progressDiv = document.createElement('div');
+        progressDiv.id = 'restructureProgress';
+        progressDiv.innerHTML = `
+            <div style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); 
+                        background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+                        z-index: 2000; text-align: center; min-width: 400px;">
+                <h3>DB 재구성 중...</h3>
+                <p id="restructureText">데이터 로드 중...</p>
+                <div style="width: 100%; height: 20px; background: #f0f0f0; border-radius: 10px; overflow: hidden; margin: 10px 0;">
+                    <div id="restructureBar" style="height: 100%; background: #007bff; width: 0%; transition: width 0.3s;"></div>
+                </div>
+                <div id="restructureDetails" style="font-size: 12px; color: #6c757d; margin-top: 10px;"></div>
+            </div>
+        `;
+        document.body.appendChild(progressDiv);
+        
+        // 1단계: 전체 InCargo 데이터 가져오기
+        document.getElementById('restructureText').textContent = '전체 데이터 로드 중...';
+        document.getElementById('restructureBar').style.width = '10%';
+        
+        const inCargoRef = window.firebaseRef(window.firebaseDb, 'DeptName/WareHouseDept2/InCargo');
+        
+        const allData = await new Promise((resolve, reject) => {
+            window.firebaseOnValue(inCargoRef, (snapshot) => {
+                if (snapshot.exists()) {
+                    resolve(snapshot.val());
+                } else {
+                    reject(new Error('InCargo 경로에 데이터가 없습니다.'));
+                }
+            }, { onlyOnce: true });
+        });
+        
+        console.log('📊 전체 데이터 로드 완료:', allData);
+        
+        // 2단계: leaf node 찾기
+        document.getElementById('restructureText').textContent = 'leaf node 검색 중...';
+        document.getElementById('restructureBar').style.width = '20%';
+        
+        const leafNodes = [];
+        
+        function findLeafNodes(obj, path = '') {
+            if (obj === null || obj === undefined) return;
+            
+            if (typeof obj === 'object' && !Array.isArray(obj)) {
+                const keys = Object.keys(obj);
+                
+                keys.forEach(key => {
+                    const value = obj[key];
+                    if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+                        const hasNestedObjects = Object.values(value).some(v => 
+                            typeof v === 'object' && v !== null && !Array.isArray(v)
+                        );
+                        
+                        const currentPath = path ? `${path}/${key}` : key;
+                        
+                        if (hasNestedObjects) {
+                            findLeafNodes(value, currentPath);
+                        } else {
+                            // leaf node 발견 - date와 consignee가 있는지 확인
+                            if (value.date && value.consignee) {
+                                leafNodes.push({
+                                    path: currentPath,
+                                    key: key,
+                                    data: value
+                                });
+                            }
+                        }
+                    }
+                });
+            }
+        }
+        
+        findLeafNodes(allData);
+        
+        console.log(`✅ ${leafNodes.length}개의 leaf node 발견`);
+        document.getElementById('restructureDetails').textContent = `발견된 레코드: ${leafNodes.length}개`;
+        
+        if (leafNodes.length === 0) {
+            alert('재구성할 데이터가 없습니다.');
+            document.body.removeChild(progressDiv);
+            return;
+        }
+        
+        // 3단계: 새 경로로 데이터 재구성
+        document.getElementById('restructureText').textContent = '새 경로로 재구성 중...';
+        document.getElementById('restructureBar').style.width = '40%';
+        
+        const newStructure = {};
+        let successCount = 0;
+        let errorCount = 0;
+        
+        leafNodes.forEach((node, index) => {
+            try {
+                const data = node.data;
+                const date = data.date; // yyyy-mm-dd 형식
+                const consignee = data.consignee;
+                
+                if (!date || !consignee) {
+                    console.warn(`⚠️ 데이터 누락: ${node.path}`, { date, consignee });
+                    errorCount++;
+                    return;
+                }
+                
+                // yyyy-mm-dd를 yyyy/mm/dd로 변환
+                const [year, month, day] = date.split('-');
+                const datePath = `${year}/${month}/${day}`;
+                
+                // 새 경로 구성: yyyy/mm/dd/consignee/
+                const newPath = `${datePath}/${consignee}`;
+                
+                // newStructure 객체에 경로별로 데이터 저장
+                if (!newStructure[datePath]) {
+                    newStructure[datePath] = {};
+                }
+                if (!newStructure[datePath][consignee]) {
+                    newStructure[datePath][consignee] = {};
+                }
+                
+                // 원래 키를 사용하여 데이터 저장
+                newStructure[datePath][consignee][node.key] = data;
+                
+                successCount++;
+                
+                // 진행률 업데이트
+                if (index % 10 === 0) {
+                    const progress = 40 + Math.floor((index / leafNodes.length) * 40);
+                    document.getElementById('restructureBar').style.width = `${progress}%`;
+                    document.getElementById('restructureDetails').textContent = 
+                        `처리 중: ${index}/${leafNodes.length} (성공: ${successCount}, 오류: ${errorCount})`;
+                }
+                
+            } catch (error) {
+                console.error(`❌ 데이터 처리 오류: ${node.path}`, error);
+                errorCount++;
+            }
+        });
+        
+        console.log(`📋 재구성 완료: 성공 ${successCount}, 오류 ${errorCount}`);
+        
+        // 4단계: Firebase에 업로드
+        document.getElementById('restructureText').textContent = 'Firebase에 업로드 중...';
+        document.getElementById('restructureBar').style.width = '80%';
+        document.getElementById('restructureDetails').textContent = 
+            `업로드 준비 완료: ${successCount}개 레코드`;
+        
+        // 기존 데이터 백업을 위해 전체를 교체하지 않고 병합
+        for (const datePath in newStructure) {
+            const dateData = newStructure[datePath];
+            
+            for (const consignee in dateData) {
+                const consigneeData = dateData[consignee];
+                const uploadPath = `DeptName/WareHouseDept2/InCargo/${datePath}/${consignee}`;
+                
+                console.log(`📤 업로드 중: ${uploadPath} (${Object.keys(consigneeData).length}개 레코드)`);
+                
+                const uploadRef = window.firebaseRef(window.firebaseDb, uploadPath);
+                await window.firebaseSet(uploadRef, consigneeData);
+            }
+        }
+        
+        // 5단계: 완료
+        document.getElementById('restructureText').textContent = '완료!';
+        document.getElementById('restructureBar').style.width = '100%';
+        document.getElementById('restructureDetails').textContent = 
+            `재구성 완료: ${successCount}개 레코드가 새 경로로 이동됨`;
+        
+        setTimeout(() => {
+            document.body.removeChild(progressDiv);
+            
+            const resultMessage = `DB 재구성이 완료되었습니다!
+
+📊 결과:
+- 성공: ${successCount}개 레코드
+- 오류: ${errorCount}개 레코드
+- 새 경로 구조: DeptName/WareHouseDept2/InCargo/yyyy/mm/dd/consignee/
+
+데이터를 다시 로드하시겠습니까?`;
+            
+            if (confirm(resultMessage)) {
+                loadInCargoDataOnPageLoad();
+            }
+        }, 1500);
+        
+    } catch (error) {
+        console.error('❌ DB 재구성 오류:', error);
+        
+        const progressDiv = document.getElementById('restructureProgress');
+        if (progressDiv) {
+            document.body.removeChild(progressDiv);
+        }
+        
+        alert(`DB 재구성 중 오류가 발생했습니다:\n${error.message}`);
+    }
+}
