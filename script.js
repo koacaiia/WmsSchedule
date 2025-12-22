@@ -4291,12 +4291,8 @@ async function deleteDataByDateRange() {
 
 // DB 재구성 함수 - consignee 경로 기반으로 재구성
 async function restructureDatabaseByConsignee() {
-    if (!confirm('DB를 재구성하시겠습니까?\n\n모든 데이터를 "DeptName/WareHouseDept2/InCargo/yyyy/mm/dd/consignee/" 경로로 재구성합니다.')) {
-        return;
-    }
-    
     try {
-        console.log('🔧 DB 재구성 시작...');
+        console.log('🔧 DB 재구성 프로세스 시작...');
         
         // 진행 상황 표시
         const progressDiv = document.createElement('div');
@@ -4305,7 +4301,7 @@ async function restructureDatabaseByConsignee() {
             <div style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); 
                         background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);
                         z-index: 2000; text-align: center; min-width: 400px;">
-                <h3>DB 재구성 중...</h3>
+                <h3>잘못된 경로 데이터 검색 중...</h3>
                 <p id="restructureText">데이터 로드 중...</p>
                 <div style="width: 100%; height: 20px; background: #f0f0f0; border-radius: 10px; overflow: hidden; margin: 10px 0;">
                     <div id="restructureBar" style="height: 100%; background: #007bff; width: 0%; transition: width 0.3s;"></div>
@@ -4331,15 +4327,19 @@ async function restructureDatabaseByConsignee() {
             }, { onlyOnce: true });
         });
         
-        console.log('📊 전체 데이터 로드 완료:', allData);
+        console.log('📊 전체 데이터 로드 완료');
         
-        // 2단계: leaf node 찾기
-        document.getElementById('restructureText').textContent = 'leaf node 검색 중...';
+        // 2단계: yyyy/mm/dd 경로가 아닌 곳의 leaf node 찾기
+        document.getElementById('restructureText').textContent = '잘못된 경로의 데이터 검색 중...';
         document.getElementById('restructureBar').style.width = '20%';
         
-        const leafNodes = [];
+        const invalidPathLeafNodes = []; // yyyy/mm/dd 경로가 아닌 leafNodes
+        const datePathMap = {}; // 날짜별로 그룹화
         
-        function findLeafNodes(obj, path = '') {
+        // yyyy/mm/dd 패턴 정규식
+        const datePathPattern = /^\d{4}\/\d{2}\/\d{2}/;
+        
+        function findInvalidPathLeafNodes(obj, path = '') {
             if (obj === null || obj === undefined) return;
             
             if (typeof obj === 'object' && !Array.isArray(obj)) {
@@ -4355,15 +4355,31 @@ async function restructureDatabaseByConsignee() {
                         const currentPath = path ? `${path}/${key}` : key;
                         
                         if (hasNestedObjects) {
-                            findLeafNodes(value, currentPath);
+                            findInvalidPathLeafNodes(value, currentPath);
                         } else {
-                            // leaf node 발견 - date와 consignee가 있는지 확인
-                            if (value.date && value.consignee) {
-                                leafNodes.push({
-                                    path: currentPath,
-                                    key: key,
-                                    data: value
-                                });
+                            // leaf node 발견
+                            if (value.date) {
+                                // 경로가 yyyy/mm/dd로 시작하지 않으면 잘못된 경로
+                                if (!datePathPattern.test(currentPath)) {
+                                    const date = value.date;
+                                    invalidPathLeafNodes.push({
+                                        path: currentPath,
+                                        key: key,
+                                        data: value
+                                    });
+                                    
+                                    // 날짜별로 그룹화
+                                    if (!datePathMap[date]) {
+                                        datePathMap[date] = [];
+                                    }
+                                    datePathMap[date].push({
+                                        path: currentPath,
+                                        key: key,
+                                        data: value
+                                    });
+                                    
+                                    console.log(`🔍 잘못된 경로 발견: ${currentPath} (date: ${date})`);
+                                }
                             }
                         }
                     }
@@ -4371,16 +4387,178 @@ async function restructureDatabaseByConsignee() {
             }
         }
         
-        findLeafNodes(allData);
+        findInvalidPathLeafNodes(allData);
         
-        console.log(`✅ ${leafNodes.length}개의 leaf node 발견`);
-        document.getElementById('restructureDetails').textContent = `발견된 레코드: ${leafNodes.length}개`;
+        console.log(`⚠️ 잘못된 경로의 데이터: ${invalidPathLeafNodes.length}개`);
+        console.log('📋 날짜별 그룹:', datePathMap);
+        document.getElementById('restructureDetails').textContent = `잘못된 경로 데이터: ${invalidPathLeafNodes.length}개`;
         
-        if (leafNodes.length === 0) {
-            alert('재구성할 데이터가 없습니다.');
+        if (invalidPathLeafNodes.length === 0) {
+            alert('잘못된 경로의 데이터가 없습니다.\n모든 데이터가 올바른 경로(yyyy/mm/dd)에 있습니다.');
             document.body.removeChild(progressDiv);
             return;
         }
+        
+        // 날짜 목록 추출
+        const datesArray = Object.keys(datePathMap).sort();
+        
+        console.log(`📅 재구성 대상 날짜: ${datesArray.length}개`, datesArray);
+        
+        document.getElementById('restructureText').textContent = '날짜 선택 대기 중...';
+        document.getElementById('restructureBar').style.width = '30%';
+        
+        // 3단계: 날짜 선택 팝업 표시
+        document.body.removeChild(progressDiv);
+        
+        // 날짜 선택 모달 생성
+        const dateModal = document.createElement('div');
+        dateModal.id = 'restructureDateModal';
+        dateModal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.5); z-index: 2000; display: flex; align-items: center; justify-content: center;';
+        
+        dateModal.innerHTML = `
+            <div style="background: white; padding: 30px; border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.3); min-width: 500px;">
+                <h2 style="margin: 0 0 20px 0; color: #007bff; text-align: center;">🔧 DB 재구성</h2>
+                <div style="margin-bottom: 20px; padding: 15px; background: #d1ecf1; border-left: 4px solid #17a2b8; border-radius: 4px;">
+                    <p style="margin: 0; color: #0c5460; font-weight: bold;">💡 잘못된 경로의 데이터를 올바른 yyyy/mm/dd 구조로 재구성합니다.</p>
+                </div>
+                <div style="margin-bottom: 20px;">
+                    <p style="margin: 0 0 10px 0; font-weight: bold; color: #495057;">발견된 잘못된 경로 데이터:</p>
+                    <p style="margin: 0 0 5px 0; color: #6c757d;">📊 총 데이터: <strong>${invalidPathLeafNodes.length}개</strong></p>
+                    <p style="margin: 0 0 20px 0; color: #6c757d;">📅 날짜 종류: <strong>${datesArray.length}개</strong></p>
+                </div>
+                <div style="margin-bottom: 20px;">
+                    <label style="display: block; margin-bottom: 8px; font-weight: bold; color: #495057;">재구성할 날짜 선택:</label>
+                    <select id="restructureDateSelect" multiple style="width: 100%; padding: 10px; border: 2px solid #dee2e6; border-radius: 6px; font-size: 14px;" size="10">
+                        ${datesArray.map(date => {
+                            const count = datePathMap[date].length;
+                            return `<option value="${date}">${date} (${count}개 데이터)</option>`;
+                        }).join('')}
+                    </select>
+                    <p style="margin: 10px 0 0 0; font-size: 12px; color: #6c757d;">💡 <strong>Ctrl + 클릭</strong>: 개별 선택/해제 | <strong>Shift + 클릭</strong>: 범위 선택</p>
+                </div>
+                <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                    <button id="cancelRestructureBtn" style="padding: 10px 20px; border: none; background: #6c757d; color: white; border-radius: 6px; cursor: pointer; font-weight: bold;">취소</button>
+                    <button id="confirmRestructureBtn" style="padding: 10px 20px; border: none; background: #007bff; color: white; border-radius: 6px; cursor: pointer; font-weight: bold;">재구성</button>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(dateModal);
+        
+        // 취소 버튼 이벤트
+        document.getElementById('cancelRestructureBtn').onclick = () => {
+            document.body.removeChild(dateModal);
+            console.log('❌ 재구성 취소됨');
+        };
+        
+        // 재구성 확인 버튼 이벤트
+        document.getElementById('confirmRestructureBtn').onclick = async () => {
+            const selectElement = document.getElementById('restructureDateSelect');
+            const selectedDates = Array.from(selectElement.selectedOptions).map(option => option.value);
+            
+            if (selectedDates.length === 0) {
+                alert('재구성할 날짜를 선택해주세요.');
+                return;
+            }
+            
+            // 선택된 날짜의 데이터 개수 계산
+            const totalData = selectedDates.reduce((sum, date) => sum + datePathMap[date].length, 0);
+            
+            const confirmMessage = `다음 날짜의 데이터를 재구성하시겠습니까?\n\n${selectedDates.join('\n')}\n\n총 ${selectedDates.length}개 날짜, ${totalData}개 데이터를 올바른 경로로 이동합니다.`;
+            
+            if (!confirm(confirmMessage)) {
+                console.log('❌ 재구성 취소됨');
+                return;
+            }
+            
+            // 모달 제거하고 진행 상황 표시
+            document.body.removeChild(dateModal);
+            
+            const restructureProgressDiv = document.createElement('div');
+            restructureProgressDiv.id = 'restructureProgressDiv';
+            restructureProgressDiv.innerHTML = `
+                <div style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); 
+                            background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+                            z-index: 2000; text-align: center; min-width: 400px;">
+                    <h3>DB 재구성 중...</h3>
+                    <p id="restructureProgressText">재구성 준비 중...</p>
+                    <div style="width: 100%; height: 20px; background: #f0f0f0; border-radius: 10px; overflow: hidden; margin: 10px 0;">
+                        <div id="restructureProgressBar" style="height: 100%; background: #007bff; width: 0%; transition: width 0.3s;"></div>
+                    </div>
+                    <div id="restructureProgressDetails" style="font-size: 12px; color: #6c757d; margin-top: 10px;"></div>
+                </div>
+            `;
+            document.body.appendChild(restructureProgressDiv);
+            
+            // 선택된 날짜의 데이터 재구성
+            let movedCount = 0;
+            let deletedCount = 0;
+            let errorCount = 0;
+            let processedData = 0;
+            
+            for (let i = 0; i < selectedDates.length; i++) {
+                const date = selectedDates[i];
+                const dataList = datePathMap[date];
+                
+                for (let j = 0; j < dataList.length; j++) {
+                    const item = dataList[j];
+                    processedData++;
+                    
+                    document.getElementById('restructureProgressText').textContent = `${date} 재구성 중... (${j + 1}/${dataList.length})`;
+                    document.getElementById('restructureProgressBar').style.width = `${(processedData / totalData) * 100}%`;
+                    document.getElementById('restructureProgressDetails').textContent = `진행: ${processedData}/${totalData} 데이터`;
+                    
+                    try {
+                        const record = item.data;
+                        const oldPath = item.path;
+                        
+                        // 새 경로 생성: yyyy/mm/dd/consignee/recordKey
+                        const [year, month, day] = record.date.split('-');
+                        const consignee = record.consignee || 'unknown';
+                        const newPath = `${year}/${month}/${day}/${consignee}/${item.key}`;
+                        
+                        console.log(`📦 이동: ${oldPath} → ${newPath}`);
+                        
+                        // 새 경로에 데이터 저장
+                        const newRef = window.firebaseRef(window.firebaseDb, `DeptName/WareHouseDept2/InCargo/${newPath}`);
+                        await window.firebaseSet(newRef, record);
+                        movedCount++;
+                        
+                        // 기존 경로에서 삭제
+                        const oldRef = window.firebaseRef(window.firebaseDb, `DeptName/WareHouseDept2/InCargo/${oldPath}`);
+                        await window.firebaseSet(oldRef, null);
+                        deletedCount++;
+                        
+                        console.log(`✅ ${oldPath} 재구성 완료`);
+                        
+                    } catch (error) {
+                        console.error(`❌ ${item.path} 재구성 실패:`, error);
+                        errorCount++;
+                    }
+                }
+            }
+            
+            // 완료 메시지
+            document.getElementById('restructureProgressText').textContent = '재구성 완료!';
+            document.getElementById('restructureProgressBar').style.width = '100%';
+            document.getElementById('restructureProgressBar').style.background = '#28a745';
+            document.getElementById('restructureProgressDetails').textContent = 
+                `이동: ${movedCount}개, 삭제: ${deletedCount}개, 실패: ${errorCount}개`;
+            
+            setTimeout(() => {
+                document.body.removeChild(restructureProgressDiv);
+                
+                const resultMessage = `DB 재구성 완료!\n\n✅ 새 경로로 이동: ${movedCount}개\n✅ 기존 경로 삭제: ${deletedCount}개\n❌ 실패: ${errorCount}개\n📊 처리한 날짜: ${selectedDates.length}개\n\n데이터를 새로고침하시겠습니까?`;
+                
+                if (confirm(resultMessage)) {
+                    loadInCargoDataOnPageLoad();
+                }
+            }, 1500);
+        };
+        
+        return; // 기존 로직 건너뛰기
+        
+        // === 아래는 기존 코드 (실행되지 않음) ===
         
         // 3단계: 새 경로로 데이터 재구성
         document.getElementById('restructureText').textContent = '새 경로로 재구성 중...';
