@@ -2316,7 +2316,7 @@ function populateDayBoxWithItems(dayName, dayData, dateStr) {
             const specDisplay = itemIndex === 0 ? (spec && spec !== '0' ? spec : '') : '';
             
             html += `
-                <div class="${itemClass}" data-container-group="${containerGroupId}">
+                <div class="${itemClass}" data-container-group="${containerGroupId}" data-container="${container}">
                     <div class="item-shipper">${shipper}</div>
                     <div class="item-product">${product}</div>
                     <div class="item-container">${containerDisplay}</div>
@@ -2621,7 +2621,8 @@ function handleDragStart(e) {
     // 드래그된 아이템의 데이터 추출
     const shipper = this.querySelector('.item-shipper').textContent;
     const product = this.querySelector('.item-product').textContent;
-    const container = this.querySelector('.item-container').textContent;
+    // data-container 속성을 우선 사용 (빈 컨테이너 표시 항목 대응)
+    const container = this.dataset.container || this.querySelector('.item-container').textContent;
     const spec = this.querySelector('.item-spec').textContent;
     
     console.log('🔄 드래그 시작:', {
@@ -2644,26 +2645,26 @@ function handleDragStart(e) {
         containerGroup: containerGroup
     };
     
-    // Firebase에서 해당 컨테이너 데이터 찾기 (모든 항목)
-    const firebasePromises = [];
-    groupItems.forEach(item => {
-        const itemShipper = item.querySelector('.item-shipper').textContent;
-        const itemProduct = item.querySelector('.item-product').textContent;
-        const itemContainer = item.querySelector('.item-container').textContent;
-        
-        firebasePromises.push(
-            new Promise((resolve) => {
-                findContainerInFirebase(itemContainer, itemShipper, itemProduct, (data) => {
-                    resolve(data);
-                });
-            })
-        );
-    });
-    
-    Promise.all(firebasePromises).then(results => {
-        draggedItemData.firebaseDataArray = results.filter(d => d !== null);
-        console.log(`✅ Firebase 데이터 찾기 완료: ${draggedItemData.firebaseDataArray.length}개`);
-    });
+    // Firebase에서 컨테이너 그룹 전체 데이터 찾기 (컨테이너 번호로 일괄 검색)
+    if (container) {
+        findContainerGroupInFirebase(container, (groupData) => {
+            if (groupData && groupData.length > 0) {
+                draggedItemData.firebaseDataArray = groupData;
+                console.log(`✅ Firebase 컨테이너 그룹 데이터 찾기 완료: ${groupData.length}개`);
+                console.log('📦 그룹 데이터:', groupData.map(d => ({
+                    container: d.container,
+                    description: d.description,
+                    refValue: d.refValue
+                })));
+            } else {
+                console.warn(`⚠️ 컨테이너 ${container}의 Firebase 데이터를 찾을 수 없습니다.`);
+                draggedItemData.firebaseDataArray = [];
+            }
+        });
+    } else {
+        console.error('❌ 컨테이너 번호가 없습니다.');
+        draggedItemData.firebaseDataArray = [];
+    }
     
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', container); // 브라우저 호환성을 위해
@@ -2816,32 +2817,74 @@ function handleDropLogic(e, targetElement) {
         return false;
     }
     
-    // Firebase 데이터 확인 - 그룹 전체 업데이트
+    // Firebase 데이터 확인 - 그룹 전체 업데이트 (refValue 기반)
     if (draggedItemData.firebaseDataArray && draggedItemData.firebaseDataArray.length > 0) {
-        console.log(`🔄 ${draggedItemData.firebaseDataArray.length}개 항목 날짜 업데이트 시작...`);
+        console.log(`🔄 ${draggedItemData.firebaseDataArray.length}개 항목 이동 시작 (refValue 기반)...`);
         
         let updateCount = 0;
         let totalCount = draggedItemData.firebaseDataArray.length;
         
-        // 모든 항목의 날짜를 순차적으로 업데이트
+        // 모든 항목을 순차적으로 처리: 기존 경로 삭제 → 새 경로 업로드
         draggedItemData.firebaseDataArray.forEach((data, index) => {
-            if (data && data.key) {
-                updateContainerDate(data.key, newDate, () => {
-                    updateCount++;
-                    console.log(`✅ ${updateCount}/${totalCount} 업데이트 완료`);
+            if (data && data.refValue) {
+                // refValue를 Firebase 경로로 사용
+                const oldPath = data.refValue;
+                console.log(`📍 기존 경로: ${oldPath}`);
+                
+                // 새로운 경로 생성: yyyy/mm/dd/consignee/recordKey
+                const [year, month, day] = newDate.split('-');
+                const consignee = data.consignee || data.shipper || 'unknown';
+                
+                // 기존 recordKey 추출 (경로의 마지막 부분)
+                const pathParts = oldPath.split('/');
+                const recordKey = pathParts[pathParts.length - 1];
+                
+                const newPath = `DeptName/WareHouseDept2/InCargo/${year}/${month}/${day}/${consignee}/${recordKey}`;
+                console.log(`📍 새 경로: ${newPath}`);
+                
+                // 1단계: 기존 경로에서 삭제
+                const oldRef = window.firebaseRef(window.firebaseDb, oldPath);
+                window.firebaseSet(oldRef, null).then(() => {
+                    console.log(`✅ 기존 경로 삭제 완료: ${oldPath}`);
                     
-                    // 모든 업데이트가 완료되면 새로고침
+                    // 2단계: 업데이트된 데이터를 새 경로에 업로드
+                    const updatedData = {
+                        ...data,
+                        date: newDate,
+                        refValue: newPath,
+                        updatedAt: new Date().toISOString()
+                    };
+                    
+                    // refValue, key 같은 메타데이터 제거
+                    delete updatedData.key;
+                    
+                    const newRef = window.firebaseRef(window.firebaseDb, newPath);
+                    return window.firebaseSet(newRef, updatedData);
+                }).then(() => {
+                    updateCount++;
+                    console.log(`✅ ${updateCount}/${totalCount} 이동 완료 (삭제 → 업로드)`);
+                    
+                    // 모든 업데이트가 완료되면 주간요약창 새로고침
                     if (updateCount === totalCount) {
-                        console.log('✅ 모든 날짜 업데이트 완료, 새로고침 중...');
+                        console.log('✅ 모든 데이터 이동 완료, 주간요약창 새로고침 중...');
                         alert(`${draggedItemData.container} 관련 ${totalCount}개 항목이 ${targetDayKorean}요일로 이동되었습니다!`);
-                        loadWeeklyData();
+                        // 주간요약창 갱신
+                        loadWeeklySummaryData();
+                    }
+                }).catch((error) => {
+                    console.error(`❌ 데이터 이동 실패: ${oldPath} → ${newPath}`, error);
+                    updateCount++;
+                    if (updateCount === totalCount) {
+                        alert(`일부 데이터 이동이 실패했습니다. ${error.message}`);
+                        loadWeeklySummaryData();
                     }
                 });
             } else {
+                console.error('❌ refValue가 없는 데이터:', data);
                 totalCount--;
                 if (updateCount === totalCount && totalCount > 0) {
                     alert(`${draggedItemData.container} 관련 ${totalCount}개 항목이 ${targetDayKorean}요일로 이동되었습니다!`);
-                    loadWeeklyData();
+                    loadWeeklySummaryData();
                 }
             }
         });
@@ -2853,7 +2896,75 @@ function handleDropLogic(e, targetElement) {
     return true;
 }
 
-// Firebase에서 컨테이너 데이터 찾기
+// Firebase에서 컨테이너 그룹 전체 데이터 찾기 (컨테이너 번호로 일괄 검색)
+function findContainerGroupInFirebase(container, callback) {
+    if (!window.firebaseDb) {
+        console.error('❌ Firebase 데이터베이스가 초기화되지 않았습니다.');
+        callback([]);
+        return;
+    }
+    
+    console.log('🔍 Firebase에서 컨테이너 그룹 검색 시작:', container);
+    
+    // 전체 InCargo 데이터에서 검색
+    const inCargoRef = window.firebaseRef(window.firebaseDb, 'DeptName/WareHouseDept2/InCargo');
+    window.firebaseOnValue(inCargoRef, (snapshot) => {
+        if (snapshot.exists()) {
+            const data = snapshot.val();
+            const groupData = [];
+            
+            // 깊이 검색으로 같은 컨테이너 번호를 가진 모든 데이터 찾기
+            function findAllMatchingContainers(obj, path = '') {
+                if (obj === null || obj === undefined) return;
+                
+                if (typeof obj === 'object' && !Array.isArray(obj)) {
+                    const keys = Object.keys(obj);
+                    
+                    keys.forEach(key => {
+                        const currentPath = path ? `${path}/${key}` : key;
+                        const value = obj[key];
+                        
+                        if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+                            // 이것이 실제 데이터 레코드인지 확인
+                            const hasNestedObjects = Object.values(value).some(v => 
+                                typeof v === 'object' && v !== null && !Array.isArray(v)
+                            );
+                            
+                            if (!hasNestedObjects && value.container) {
+                                // 컨테이너 번호만 매칭 (같은 컨테이너의 모든 품목 포함)
+                                if (value.container === container) {
+                                    console.log(`✅ 매칭 발견: ${currentPath}`);
+                                    groupData.push({
+                                        key: currentPath,
+                                        ...value
+                                    });
+                                }
+                            } else {
+                                // 더 깊이 탐색
+                                findAllMatchingContainers(value, currentPath);
+                            }
+                        }
+                    });
+                }
+            }
+            
+            findAllMatchingContainers(data);
+            
+            if (groupData.length > 0) {
+                console.log(`✅ 컨테이너 그룹 찾기 성공: ${groupData.length}개 항목`);
+                callback(groupData);
+            } else {
+                console.error('❌ 컨테이너 그룹을 찾을 수 없습니다:', container);
+                callback([]);
+            }
+        } else {
+            console.error('❌ InCargo 데이터가 없습니다.');
+            callback([]);
+        }
+    }, { onlyOnce: true });
+}
+
+// Firebase에서 컨테이너 데이터 찾기 (개별 검색용 - 하위 호환성)
 function findContainerInFirebase(container, shipper, product, callback) {
     if (!window.firebaseDb) {
         console.error('❌ Firebase 데이터베이스가 초기화되지 않았습니다.');
