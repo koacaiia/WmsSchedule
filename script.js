@@ -4034,6 +4034,261 @@ window.handleDeleteArrival = async function() {
     }
 };
 
+// DB 날짜별 삭제 함수 (동적 경로 탐색)
+async function deleteDataByDateRange() {
+    try {
+        console.log('🗑️ DB 삭제 프로세스 시작...');
+        
+        // 진행 상황 표시
+        const progressDiv = document.createElement('div');
+        progressDiv.id = 'deleteProgress';
+        progressDiv.innerHTML = `
+            <div style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); 
+                        background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+                        z-index: 2000; text-align: center; min-width: 400px;">
+                <h3>데이터베이스 날짜 확인 중...</h3>
+                <p id="deleteText">데이터 로드 중...</p>
+                <div style="width: 100%; height: 20px; background: #f0f0f0; border-radius: 10px; overflow: hidden; margin: 10px 0;">
+                    <div id="deleteBar" style="height: 100%; background: #ff4444; width: 0%; transition: width 0.3s;"></div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(progressDiv);
+        
+        // 1단계: InCargo 전체 데이터 가져오기
+        document.getElementById('deleteText').textContent = '데이터베이스에서 날짜 정보 추출 중...';
+        document.getElementById('deleteBar').style.width = '20%';
+        
+        const inCargoRef = window.firebaseRef(window.firebaseDb, 'DeptName/WareHouseDept2/InCargo');
+        
+        const allData = await new Promise((resolve, reject) => {
+            window.firebaseOnValue(inCargoRef, (snapshot) => {
+                if (snapshot.exists()) {
+                    resolve(snapshot.val());
+                } else {
+                    reject(new Error('InCargo 경로에 데이터가 없습니다.'));
+                }
+            }, { onlyOnce: true });
+        });
+        
+        console.log('📊 전체 데이터 로드 완료');
+        
+        // 2단계: 모든 leaf node에서 날짜와 경로 추출
+        document.getElementById('deleteText').textContent = '모든 leaf node 분석 중...';
+        document.getElementById('deleteBar').style.width = '40%';
+        
+        const datePathMap = {}; // 날짜별 경로 매핑 { date: [path1, path2, ...] }
+        
+        function extractLeafNodesWithPaths(obj, path = '', depth = 0) {
+            if (obj === null || obj === undefined) return;
+            
+            if (typeof obj === 'object' && !Array.isArray(obj)) {
+                const keys = Object.keys(obj);
+                
+                keys.forEach(key => {
+                    const value = obj[key];
+                    if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+                        const hasNestedObjects = Object.values(value).some(v => 
+                            typeof v === 'object' && v !== null && !Array.isArray(v)
+                        );
+                        
+                        const currentPath = path ? `${path}/${key}` : key;
+                        
+                        if (!hasNestedObjects && value.date) {
+                            // leaf node 발견
+                            const date = value.date;
+                            
+                            // 경로에서 상위 2단계를 찾음 (leaf의 parent의 parent)
+                            const pathParts = currentPath.split('/');
+                            if (pathParts.length >= 2) {
+                                // leaf node의 parent의 parent 경로 (일반적으로 yyyy/mm/dd 레벨)
+                                const parentParentPath = pathParts.slice(0, -2).join('/');
+                                
+                                if (!datePathMap[date]) {
+                                    datePathMap[date] = new Set();
+                                }
+                                datePathMap[date].add(parentParentPath);
+                            }
+                            
+                            console.log(`🍃 Leaf node 발견: ${currentPath} (date: ${date}, depth: ${depth})`);
+                        } else {
+                            // 더 깊이 탐색
+                            extractLeafNodesWithPaths(value, currentPath, depth + 1);
+                        }
+                    }
+                });
+            }
+        }
+        
+        extractLeafNodesWithPaths(allData);
+        
+        // Set을 Array로 변환
+        Object.keys(datePathMap).forEach(date => {
+            datePathMap[date] = Array.from(datePathMap[date]);
+        });
+        
+        const datesArray = Object.keys(datePathMap).sort();
+        
+        console.log(`📅 발견된 날짜: ${datesArray.length}개`, datesArray);
+        console.log(`📍 날짜별 경로 매핑:`, datePathMap);
+        
+        if (datesArray.length === 0) {
+            alert('삭제할 데이터가 없습니다.');
+            document.body.removeChild(progressDiv);
+            return;
+        }
+        
+        // 시작일과 종료일 추출
+        const startDate = datesArray[0];
+        const endDate = datesArray[datesArray.length - 1];
+        
+        document.getElementById('deleteText').textContent = '날짜 선택 대기 중...';
+        document.getElementById('deleteBar').style.width = '60%';
+        
+        // 3단계: 날짜 선택 팝업 표시
+        document.body.removeChild(progressDiv);
+        
+        // 날짜 선택 모달 생성
+        const dateModal = document.createElement('div');
+        dateModal.id = 'dateDeleteModal';
+        dateModal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.5); z-index: 2000; display: flex; align-items: center; justify-content: center;';
+        
+        dateModal.innerHTML = `
+            <div style="background: white; padding: 30px; border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.3); min-width: 500px;">
+                <h2 style="margin: 0 0 20px 0; color: #dc3545; text-align: center;">⚠️ 데이터 삭제</h2>
+                <div style="margin-bottom: 20px; padding: 15px; background: #fff3cd; border-left: 4px solid #ffc107; border-radius: 4px;">
+                    <p style="margin: 0; color: #856404; font-weight: bold;">⚠️ 경고: 선택한 날짜의 모든 leaf node 데이터가 영구적으로 삭제됩니다!</p>
+                </div>
+                <div style="margin-bottom: 20px;">
+                    <p style="margin: 0 0 10px 0; font-weight: bold; color: #495057;">데이터베이스 날짜 범위:</p>
+                    <p style="margin: 0 0 5px 0; color: #6c757d;">📅 최소 날짜: <strong>${startDate}</strong></p>
+                    <p style="margin: 0 0 20px 0; color: #6c757d;">📅 최대 날짜: <strong>${endDate}</strong></p>
+                    <p style="margin: 0 0 10px 0; color: #6c757d;">총 <strong>${datesArray.length}개</strong>의 날짜에 데이터가 존재합니다.</p>
+                </div>
+                <div style="margin-bottom: 20px;">
+                    <label style="display: block; margin-bottom: 8px; font-weight: bold; color: #495057;">삭제할 날짜 선택:</label>
+                    <select id="deleteDateSelect" multiple style="width: 100%; padding: 10px; border: 2px solid #dee2e6; border-radius: 6px; font-size: 14px;" size="10">
+                        ${datesArray.map(date => {
+                            const pathCount = datePathMap[date].length;
+                            return `<option value="${date}">${date} (${pathCount}개 경로)</option>`;
+                        }).join('')}
+                    </select>
+                    <p style="margin: 10px 0 0 0; font-size: 12px; color: #6c757d;">💡 <strong>Ctrl + 클릭</strong>: 개별 선택/해제 | <strong>Shift + 클릭</strong>: 범위 선택</p>
+                </div>
+                <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                    <button id="cancelDeleteBtn" style="padding: 10px 20px; border: none; background: #6c757d; color: white; border-radius: 6px; cursor: pointer; font-weight: bold;">취소</button>
+                    <button id="confirmDeleteBtn" style="padding: 10px 20px; border: none; background: #dc3545; color: white; border-radius: 6px; cursor: pointer; font-weight: bold;">삭제</button>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(dateModal);
+        
+        // 취소 버튼 이벤트
+        document.getElementById('cancelDeleteBtn').onclick = () => {
+            document.body.removeChild(dateModal);
+            console.log('❌ 삭제 취소됨');
+        };
+        
+        // 삭제 확인 버튼 이벤트
+        document.getElementById('confirmDeleteBtn').onclick = async () => {
+            const selectElement = document.getElementById('deleteDateSelect');
+            const selectedDates = Array.from(selectElement.selectedOptions).map(option => option.value);
+            
+            if (selectedDates.length === 0) {
+                alert('삭제할 날짜를 선택해주세요.');
+                return;
+            }
+            
+            // 선택된 날짜들의 경로 수 계산
+            const totalPaths = selectedDates.reduce((sum, date) => sum + datePathMap[date].length, 0);
+            
+            const confirmMessage = `다음 날짜의 데이터를 삭제하시겠습니까?\n\n${selectedDates.join('\n')}\n\n총 ${selectedDates.length}개 날짜, ${totalPaths}개 경로의 모든 데이터가 영구적으로 삭제됩니다.\n이 작업은 되돌릴 수 없습니다!`;
+            
+            if (!confirm(confirmMessage)) {
+                console.log('❌ 삭제 취소됨');
+                return;
+            }
+            
+            // 모달 제거하고 진행 상황 표시
+            document.body.removeChild(dateModal);
+            
+            const deleteProgressDiv = document.createElement('div');
+            deleteProgressDiv.id = 'deleteProgressDiv';
+            deleteProgressDiv.innerHTML = `
+                <div style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); 
+                            background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+                            z-index: 2000; text-align: center; min-width: 400px;">
+                    <h3>데이터 삭제 중...</h3>
+                    <p id="deleteProgressText">삭제 준비 중...</p>
+                    <div style="width: 100%; height: 20px; background: #f0f0f0; border-radius: 10px; overflow: hidden; margin: 10px 0;">
+                        <div id="deleteProgressBar" style="height: 100%; background: #dc3545; width: 0%; transition: width 0.3s;"></div>
+                    </div>
+                    <div id="deleteDetails" style="font-size: 12px; color: #6c757d; margin-top: 10px;"></div>
+                </div>
+            `;
+            document.body.appendChild(deleteProgressDiv);
+            
+            // 선택된 날짜들의 모든 경로 삭제
+            let deletedCount = 0;
+            let errorCount = 0;
+            let processedPaths = 0;
+            
+            for (let i = 0; i < selectedDates.length; i++) {
+                const date = selectedDates[i];
+                const paths = datePathMap[date];
+                
+                for (let j = 0; j < paths.length; j++) {
+                    const path = paths[j];
+                    processedPaths++;
+                    
+                    document.getElementById('deleteProgressText').textContent = `${date} 삭제 중... (${j + 1}/${paths.length})`;
+                    document.getElementById('deleteProgressBar').style.width = `${(processedPaths / totalPaths) * 100}%`;
+                    document.getElementById('deleteDetails').textContent = `진행: ${processedPaths}/${totalPaths} 경로`;
+                    
+                    try {
+                        const fullPath = `DeptName/WareHouseDept2/InCargo/${path}`;
+                        const deleteRef = window.firebaseRef(window.firebaseDb, fullPath);
+                        await window.firebaseSet(deleteRef, null);
+                        
+                        console.log(`✅ ${fullPath} 삭제 완료`);
+                        deletedCount++;
+                    } catch (error) {
+                        console.error(`❌ ${path} 삭제 실패:`, error);
+                        errorCount++;
+                    }
+                }
+            }
+            
+            // 완료 메시지
+            document.getElementById('deleteProgressText').textContent = '삭제 완료!';
+            document.getElementById('deleteProgressBar').style.width = '100%';
+            document.getElementById('deleteProgressBar').style.background = '#28a745';
+            document.getElementById('deleteDetails').textContent = `성공: ${deletedCount}개 경로, 실패: ${errorCount}개 경로`;
+            
+            setTimeout(() => {
+                document.body.removeChild(deleteProgressDiv);
+                
+                const resultMessage = `데이터 삭제 완료!\n\n✅ 성공: ${deletedCount}개 경로\n❌ 실패: ${errorCount}개 경로\n📊 처리한 날짜: ${selectedDates.length}개\n\n데이터를 새로고침하시겠습니까?`;
+                
+                if (confirm(resultMessage)) {
+                    loadInCargoDataOnPageLoad();
+                }
+            }, 1500);
+        };
+        
+    } catch (error) {
+        console.error('❌ DB 삭제 프로세스 오류:', error);
+        
+        const progressDiv = document.getElementById('deleteProgress') || document.getElementById('deleteProgressDiv');
+        if (progressDiv) {
+            document.body.removeChild(progressDiv);
+        }
+        
+        alert(`DB 삭제 중 오류가 발생했습니다:\n${error.message}`);
+    }
+}
+
 // DB 재구성 함수 - consignee 경로 기반으로 재구성
 async function restructureDatabaseByConsignee() {
     if (!confirm('DB를 재구성하시겠습니까?\n\n모든 데이터를 "DeptName/WareHouseDept2/InCargo/yyyy/mm/dd/consignee/" 경로로 재구성합니다.')) {
