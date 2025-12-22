@@ -428,6 +428,21 @@ tbody tr:hover {
     transition: background-color 0.2s ease;
 }
 
+/* 컨테이너 그룹 row gap 효과 */
+tbody tr.shipper-group.group-last {
+    border-bottom: 3px solid #686767;
+}
+
+tbody tr.shipper-group.group-last:last-child {
+    border-bottom: none;
+}
+
+/* 컨테이너번호 셀 강조 */
+tbody tr.shipper-group td.shipper-cell {
+    font-weight: bold;
+    color: #007bff;
+}
+
 .status-pending {
     background-color: #fff3cd;
     color: #856404;
@@ -1009,28 +1024,13 @@ tbody tr:hover {
     border-bottom: none;
 }
 
-/* 각 컨테이너 그룹의 첫 항목 */
-.day-item:first-of-type,
-.day-item.container-group-0:not(.container-group-0 + .container-group-0),
-.day-item.container-group-1:not(.container-group-1 + .container-group-1),
-.day-item.container-group-2:not(.container-group-2 + .container-group-2),
-.day-item.container-group-3:not(.container-group-3 + .container-group-3),
-.day-item.container-group-4:not(.container-group-4 + .container-group-4) {
-    border-top-left-radius: 4px;
-    border-top-right-radius: 4px;
-    margin-top: 8px;
+/* 컨테이너 그룹 간 row gap 효과 - 주간요약 탭 */
+.day-item.group-last {
+    border-bottom: 1px solid #000000;
 }
 
-/* 각 컨테이너 그룹의 마지막 항목 */
-.day-item:last-of-type,
-.day-item.container-group-0:not(:has(+ .container-group-0)),
-.day-item.container-group-1:not(:has(+ .container-group-1)),
-.day-item.container-group-2:not(:has(+ .container-group-2)),
-.day-item.container-group-3:not(:has(+ .container-group-3)),
-.day-item.container-group-4:not(:has(+ .container-group-4)) {
-    border-bottom-left-radius: 4px;
-    border-bottom-right-radius: 4px;
-    margin-bottom: 8px;
+.day-item.group-last:last-child {
+    border-bottom: none;
 }
 
 .day-item.spec-40 {
@@ -1071,25 +1071,13 @@ tbody tr:hover {
     font-weight: 900;
 }
 
-/* 컨테이너 그룹별 배경색 (회색 그라데이션) */
-.day-item.container-group-0 {
-    background: linear-gradient(135deg, #ffffff 0%, #e0e0e0 100%);
-}
-
-.day-item.container-group-1 {
-    background: linear-gradient(135deg, #d8d8d8 0%, #c0c0c0 100%);
-}
-
-.day-item.container-group-2 {
-    background: linear-gradient(135deg, #c0c0c0 0%, #a8a8a8 100%);
-}
-
-.day-item.container-group-3 {
-    background: linear-gradient(135deg, #a8a8a8 0%, #909090 100%);
-}
-
+/* 컨테이너 그룹별 배경색 제거 (단일 배경색 사용) */
+.day-item.container-group-0,
+.day-item.container-group-1,
+.day-item.container-group-2,
+.day-item.container-group-3,
 .day-item.container-group-4 {
-    background: linear-gradient(135deg, #909090 0%, #787878 100%);
+    background: #ffffff;
 }
 
 /* 드래그 앤 드롭 스타일 */

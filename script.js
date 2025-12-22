@@ -1595,21 +1595,93 @@ function displayFilteredData(data, periodDescription) {
         return;
     }
     
+    // 컨테이너번호별로 그룹 정보 생성
+    let currentContainer = null;
+    let groupStartIndex = 0;
+    const containerGroups = [];
+    
+    data.forEach((item, index) => {
+        const container = item.data.container || '-';
+        
+        if (currentContainer !== container) {
+            if (currentContainer !== null) {
+                containerGroups.push({
+                    container: currentContainer,
+                    start: groupStartIndex,
+                    end: index - 1
+                });
+            }
+            currentContainer = container;
+            groupStartIndex = index;
+        }
+        
+        if (index === data.length - 1) {
+            containerGroups.push({
+                container: currentContainer,
+                start: groupStartIndex,
+                end: index
+            });
+        }
+    });
+    
+    // 각 그룹의 병합된 spec 값 계산
+    const groupSpecs = {};
+    containerGroups.forEach(group => {
+        const specs = [];
+        for (let i = group.start; i <= group.end; i++) {
+            const spec = data[i].data.spec || '';
+            if (spec && spec !== '0' && spec !== '-') {
+                specs.push(spec);
+            }
+        }
+        
+        // 모든 값이 같은지 확인
+        const uniqueSpecs = [...new Set(specs)];
+        if (uniqueSpecs.length === 0) {
+            groupSpecs[group.start] = '-';
+        } else if (uniqueSpecs.length === 1) {
+            groupSpecs[group.start] = uniqueSpecs[0];
+        } else {
+            // 다르면 0이 아닌 첫 번째 값
+            groupSpecs[group.start] = specs[0] || '-';
+        }
+    });
+    
     data.forEach((item, index) => {
         const record = item.data;
         const newRow = tableBody.insertRow();
+        const shipper = record.shipper || record.consignee || '-';
+        
+        // 현재 행이 속한 그룹 찾기
+        const group = containerGroups.find(g => index >= g.start && index <= g.end);
+        
+        // 그룹 클래스 추가
+        if (group) {
+            newRow.classList.add('shipper-group');
+            if (index === group.start) {
+                newRow.classList.add('group-first');
+            }
+            if (index === group.end) {
+                newRow.classList.add('group-last');
+            }
+        }
+        
+        // spec 셀은 그룹의 첫 행에만 표시
+        const isGroupFirst = group && index === group.start;
+        const rowspan = group ? (group.end - group.start + 1) : 1;
+        const mergedSpec = groupSpecs[group.start] || '-';
         
         newRow.innerHTML = `
             <td>${index + 1}</td>
             <td>${record.date || '-'}</td>
-            <td>${record.shipper || record.consignee || '-'}</td>
-            <td><strong>${record.container || '-'}</strong></td>
+            <td>${shipper}</td>
+            <td class="shipper-cell"><strong>${record.container || '-'}</strong></td>
             <td>${record.count || record.seal || '-'}</td>
             <td>${record.bl || '-'}</td>
             <td>${record.description || record.itemName || '-'}</td>
             <td>${record.qtyEa || '-'}</td>
             <td>${record.qtyPlt || '-'}</td>
-            <td>${record.spec || '-'}</td>
+            ${isGroupFirst ? `<td rowspan="${rowspan}" class="merged-cell">${mergedSpec}</td>` : ''}
             <td>${record.shape || '-'}</td>
             <td>${record.remark || '-'}</td>
         `;
@@ -1757,9 +1829,9 @@ function switchMainTab(tabName) {
     document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
     document.getElementById(`${tabName}Tab`).classList.add('active');
     
-    // 주간요약 탭으로 전환시 데이터 생성
+    // 주간요약 탭으로 전환시 이번 주 데이터 로드
     if (tabName === 'summary') {
-        generateWeeklySummaryReport();
+        loadWeeklySummaryData();
     }
 }
 
@@ -1776,7 +1848,66 @@ function switchWeeklyTab(tabName) {
     console.log(`📑 요일별 탭 전환: ${tabName}`);
 }
 
-// 주간요약 리포트 생성 (3x2 그리드 구조)
+// 주간요약 탭 데이터 로드
+async function loadWeeklySummaryData() {
+    try {
+        console.log('📅 주간요약 데이터 로드 시작...');
+        
+        // 이번 주 날짜 범위 계산
+        const weekRange = getDateRange('thisWeek');
+        const startDate = formatDateToLocal(weekRange.start);
+        const endDate = formatDateToLocal(weekRange.end);
+        
+        console.log(`🔄 이번 주 데이터 로드: ${startDate} ~ ${endDate}`);
+        
+        // Firebase에서 이번 주 데이터 가져오기
+        const weeklyData = await getInCargoLeafData(startDate, endDate);
+        
+        console.log(`✅ 주간 데이터 ${weeklyData.length}개 로드 완료`);
+        
+        // 주간 데이터로 리포트 생성 (allInCargoData 대신 직접 전달)
+        generateWeeklySummaryReportWithData(weeklyData, weekRange);
+        
+    } catch (error) {
+        console.error('❌ 주간요약 데이터 로드 실패:', error);
+        alert(`주간요약 데이터 로드 중 오류가 발생했습니다: ${error.message}`);
+    }
+}
+
+// 주간요약 리포트 생성 (데이터 직접 전달)
+function generateWeeklySummaryReportWithData(weeklyData, weekRange) {
+    try {
+        let weekData = weeklyData;
+        
+        console.log(`📅 이번주 데이터 범위: ${weekRange.start.toLocaleDateString()} ~ ${weekRange.end.toLocaleDateString()}`);
+        console.log(`📦 이번주 화물 데이터: ${weekData.length}건`);
+        
+        // 화주명 목록 생성 및 select 업데이트
+        updateShipperSelect(weekData);
+        
+        // 선택된 화주로 필터링
+        const selectedShipper = document.getElementById('shipperSelect').value;
+        if (selectedShipper) {
+            weekData = weekData.filter(item => {
+                const shipper = item.data.consignee || item.data.shipper || '';
+                return shipper === selectedShipper;
+            });
+            console.log(`📋 화주 필터링 후: ${weekData.length}건 (${selectedShipper})`);
+        }
+        
+        // 주차 계산
+        const weekNumber = getWeekNumber(weekRange.start);
+        
+        // 그리드 박스에 데이터 생성
+        generateWeeklyGridData(weekData, weekRange);
+        
+    } catch (error) {
+        console.error('❌ 주간요약 생성 오류:', error);
+        alert('주간요약 생성 중 오류가 발생했습니다: ' + error.message);
+    }
+}
+
+// 주간요약 리포트 생성 (3x2 그리드 구조) - 기존 호환성 유지
 function generateWeeklySummaryReport() {
     try {
         // 이번주 날짜 범위 계산
@@ -2172,6 +2303,12 @@ function populateDayBoxWithItems(dayName, dayData, dateStr) {
             
             // 컨테이너 그룹 ID 추가 (같은 컨테이너 번호끼리 묶기 위해)
             const containerGroupId = container.replace(/[^a-zA-Z0-9]/g, '_');
+            
+            // 그룹의 마지막 항목에 클래스 추가
+            const isLastInGroup = itemIndex === items.length - 1;
+            if (isLastInGroup) {
+                itemClass += ' group-last';
+            }
             
             // 첫 번째 항목에만 컨테이너와 Spec 표시, 나머지는 빈 문자열
             // spec은 실제 값이 있고 '0'이 아닐 때만 표시
@@ -3938,6 +4075,121 @@ function enforceFixedHeader() {
         });
         
         console.log('📌 테이블 헤더 고정 적용 완료');
+    }
+}
+
+// 엑셀 파일 내보내기 함수
+function exportTableToExcel() {
+    try {
+        console.log('📊 엑셀 파일 생성 시작...');
+        
+        const table = document.getElementById('containerTable');
+        if (!table) {
+            alert('테이블을 찾을 수 없습니다.');
+            return;
+        }
+        
+        // 테이블 데이터 추출
+        const wb = XLSX.utils.book_new();
+        
+        // 테이블의 모든 행 데이터 수집 (병합된 셀 처리 포함)
+        const rows = [];
+        const thead = table.querySelector('thead');
+        const tbody = table.querySelector('tbody');
+        
+        // 헤더 추가
+        if (thead) {
+            const headerRow = thead.querySelector('tr');
+            if (headerRow) {
+                const headers = [];
+                headerRow.querySelectorAll('th').forEach(th => {
+                    headers.push(th.textContent.trim().replace(/↕|↑|↓/g, '').trim());
+                });
+                rows.push(headers);
+            }
+        }
+        
+        // 데이터 행 추가 (병합된 셀 처리)
+        if (tbody) {
+            const dataRows = tbody.querySelectorAll('tr');
+            const mergedCellValues = {}; // 병합된 셀의 값을 저장
+            
+            dataRows.forEach((tr, rowIndex) => {
+                const rowData = [];
+                const cells = tr.querySelectorAll('td');
+                let cellIndex = 0;
+                
+                cells.forEach((td, tdIndex) => {
+                    // rowspan 처리
+                    const rowspan = parseInt(td.getAttribute('rowspan')) || 1;
+                    const colspan = parseInt(td.getAttribute('colspan')) || 1;
+                    
+                    // 병합된 셀의 경우 값을 저장
+                    if (rowspan > 1) {
+                        const value = td.textContent.trim();
+                        for (let i = 0; i < rowspan; i++) {
+                            if (!mergedCellValues[rowIndex + i]) {
+                                mergedCellValues[rowIndex + i] = {};
+                            }
+                            mergedCellValues[rowIndex + i][cellIndex] = value;
+                        }
+                    }
+                    
+                    rowData.push(td.textContent.trim());
+                    cellIndex += colspan;
+                });
+                
+                // 병합된 셀로 인해 누락된 컬럼이 있는지 확인하고 채우기
+                if (mergedCellValues[rowIndex]) {
+                    const expectedLength = rows[0].length; // 헤더 길이
+                    for (let i = rowData.length; i < expectedLength; i++) {
+                        if (mergedCellValues[rowIndex][i]) {
+                            rowData.splice(i, 0, mergedCellValues[rowIndex][i]);
+                        }
+                    }
+                }
+                
+                rows.push(rowData);
+            });
+        }
+        
+        // 워크시트 생성
+        const ws = XLSX.utils.aoa_to_sheet(rows);
+        
+        // 컬럼 너비 설정
+        const colWidths = [
+            { wch: 6 },  // 순번
+            { wch: 12 }, // 반입일
+            { wch: 15 }, // 화주명
+            { wch: 18 }, // 컨테이너번호
+            { wch: 12 }, // SEAL
+            { wch: 15 }, // Bl
+            { wch: 25 }, // 품명
+            { wch: 10 }, // 수량(EA)
+            { wch: 10 }, // 수량(PLT)
+            { wch: 10 }, // 규격
+            { wch: 10 }, // 형태
+            { wch: 20 }  // 특이사항
+        ];
+        ws['!cols'] = colWidths;
+        
+        // 워크북에 워크시트 추가
+        XLSX.utils.book_append_sheet(wb, ws, '화물관리');
+        
+        // 파일명 생성 (현재 날짜 포함)
+        const today = new Date();
+        const dateStr = today.toISOString().split('T')[0];
+        const fileName = `화인통상_화물관리_${dateStr}.xlsx`;
+        
+        // 파일 다운로드
+        XLSX.writeFile(wb, fileName);
+        
+        console.log('✅ 엑셀 파일 생성 완료:', fileName);
+        alert(`엑셀 파일이 생성되었습니다!\n\n파일명: ${fileName}\n데이터 행: ${rows.length - 1}개`);
+        
+    } catch (error) {
+        console.error('❌ 엑셀 파일 생성 오류:', error);
+        alert(`엑셀 파일 생성 중 오류가 발생했습니다:\n${error.message}`);
     }
 }
 

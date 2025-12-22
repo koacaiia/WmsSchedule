@@ -45,6 +45,7 @@
             <!-- 전체 보기 및 초기화 -->
             <div class="filter-controls">
                 <button class="control-btn" onclick="addNewArrival()">신규입고</button>
+                <button class="control-btn" onclick="exportTableToExcel()" style="background-color: #28a745; color: white;">Excel 파일 생성</button>
                 <button class="control-btn" onclick="restructureDatabaseByConsignee()" style="background-color: #dc3545; color: white;">DB 재구성</button>
                 <button class="control-btn" onclick="deleteDataByDateRange()" style="background-color: #ff4444; color: white;">DB 삭제</button>
                 <select id="shipperFilterSelect" onchange="filterTableByShipper()" class="shipper-select">
