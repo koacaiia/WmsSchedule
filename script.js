@@ -1819,6 +1819,12 @@ async function refreshData() {
 
 // 메인 탭 전환 기능
 function switchMainTab(tabName) {
+    // Long press 중이면 실행하지 않음 (다음주 데이터 로드 중)
+    if (window.isLongPressingTab) {
+        console.log(`📁🚫 메인 탭 전환 차단: ${tabName} (Long press 진행 중)`);
+        return;
+    }
+    
     console.log(`📁 메인 탭 전환: ${tabName}`);
     
     // 모든 메인 탭 버튼과 컨텐츠 비활성화
@@ -1877,10 +1883,17 @@ async function loadWeeklySummaryData() {
 // 주간요약 리포트 생성 (데이터 직접 전달)
 function generateWeeklySummaryReportWithData(weeklyData, weekRange) {
     try {
+        console.log('🟢🟢🟢 generateWeeklySummaryReportWithData 시작 🟢🟢🟢');
+        console.log('🟢 받은 weeklyData 개수:', weeklyData.length);
+        console.log('🟢 받은 weekRange:', weekRange);
+        
+        // 전역 변수 업데이트
+        allInCargoData = weeklyData;
+        
         let weekData = weeklyData;
         
-        console.log(`📅 이번주 데이터 범위: ${weekRange.start.toLocaleDateString()} ~ ${weekRange.end.toLocaleDateString()}`);
-        console.log(`📦 이번주 화물 데이터: ${weekData.length}건`);
+        console.log(`🟢 주간 데이터 범위: ${weekRange.start.toLocaleDateString()} ~ ${weekRange.end.toLocaleDateString()}`);
+        console.log(`🟢 주간 화물 데이터: ${weekData.length}건`);
         
         // 화주명 목록 생성 및 select 업데이트
         updateShipperSelect(weekData);
@@ -1892,17 +1905,20 @@ function generateWeeklySummaryReportWithData(weeklyData, weekRange) {
                 const shipper = item.data.consignee || item.data.shipper || '';
                 return shipper === selectedShipper;
             });
-            console.log(`📋 화주 필터링 후: ${weekData.length}건 (${selectedShipper})`);
+            console.log(`🟢 화주 필터링 후: ${weekData.length}건 (${selectedShipper})`);
         }
         
         // 주차 계산
         const weekNumber = getWeekNumber(weekRange.start);
         
         // 그리드 박스에 데이터 생성
+        console.log('🟢 generateWeeklyGridData 호출 시작');
         generateWeeklyGridData(weekData, weekRange);
+        console.log('🟢 generateWeeklyGridData 호출 완료');
         
     } catch (error) {
-        console.error('❌ 주간요약 생성 오류:', error);
+        console.error('🟢 ❌ 주간요약 생성 오류:', error);
+        console.error('🟢 ❌ 에러 상세:', error.stack);
         alert('주간요약 생성 중 오류가 발생했습니다: ' + error.message);
     }
 }
@@ -1990,30 +2006,15 @@ function filterByShipper() {
 
 // 3x2 그리드 데이터 생성 함수
 function generateWeeklyGridData(weekData, weekRange) {
-    console.log('📊 주간 그리드 데이터 생성 시작');
-    console.log('이번 주 범위:', weekRange.start.toLocaleDateString(), '~', weekRange.end.toLocaleDateString());
-    console.log('전체 데이터 개수:', weekData.length);
+    console.log('�🟡🟡 generateWeeklyGridData 시작 🟡🟡🟡');
+    console.log('🟡 받은 weekData 개수:', weekData.length);
+    console.log('🟡 받은 weekRange:', weekRange);
+    console.log('🟡 weekRange.start:', weekRange.start.toLocaleDateString());
+    console.log('🟡 weekRange.end:', weekRange.end.toLocaleDateString());
     
-    // 실제 저장된 모든 날짜 확인
-    console.log('=== 저장된 모든 날짜 목록 ===');
-    const allDates = new Set();
-    weekData.forEach((item, index) => {
-        const date = item.data.date;
-        allDates.add(date);
-        if (index < 10) { // 처음 10개만 상세 출력
-            console.log(`데이터 ${index}: 날짜=${date}, 품명=${item.data.description || item.data.itemName}`);
-        }
-    });
-    console.log('고유 날짜들:', Array.from(allDates).sort());
-    console.log('=========================');
-    
-    // 현재 주간의 월~금 날짜 계산
-    const currentDate = new Date();
-    const currentDay = currentDate.getDay(); // 0=일요일, 1=월요일, ..., 6=토요일
-    
-    // 이번 주 월요일 날짜 계산
-    const monday = new Date(currentDate);
-    monday.setDate(currentDate.getDate() - (currentDay === 0 ? 6 : currentDay - 1));
+    // weekRange에서 전달된 주간의 월요일 사용 (이번 주 또는 다음 주)
+    const monday = new Date(weekRange.start);
+    console.log('🟡 계산된 monday:', monday.toLocaleDateString());
     
     const days = [
         { name: '월', elementId: 'mondayContent', date: new Date(monday) },
@@ -2023,12 +2024,17 @@ function generateWeeklyGridData(weekData, weekRange) {
         { name: '금', elementId: 'fridayContent', date: new Date(monday.getTime() + 4 * 24 * 60 * 60 * 1000) }
     ];
     
+    console.log('🟡 Days 배열 생성 완료:', days.map(d => `${d.name}: ${d.date.toLocaleDateString()}`));
+    
     days.forEach(day => {
         // 한국 시간 기준으로 날짜 문자열 생성 (UTC 오프셋 문제 해결)
         const year = day.date.getFullYear();
         const month = String(day.date.getMonth() + 1).padStart(2, '0');
         const dayNum = String(day.date.getDate()).padStart(2, '0');
         const dateStr = `${year}-${month}-${dayNum}`;
+        
+        console.log(`\n🟡 ${day.name}요일 처리 시작`);
+        console.log(`🟡 dateStr: ${dateStr}`);
         
         // 헤더에 날짜 업데이트
         const dayIdMap = {
@@ -2040,28 +2046,25 @@ function generateWeeklyGridData(weekData, weekRange) {
         };
         const dayId = dayIdMap[day.name];
         const dateElement = document.getElementById(`${dayId}Date`);
+        console.log(`🟡 dateElement ID: ${dayId}Date`);
+        console.log(`🟡 dateElement 찾음:`, dateElement !== null);
         if (dateElement) {
             const displayDate = `${month}/${dayNum}`;
+            console.log(`🟡 이전 날짜: ${dateElement.textContent}`);
             dateElement.textContent = displayDate;
-            console.log(`📅 ${day.name}요일 헤더 날짜 업데이트: ${displayDate}`);
+            console.log(`🟡 새 날짜로 업데이트: ${displayDate}`);
+            console.log(`🟡 업데이트 후 확인: ${dateElement.textContent}`);
+        } else {
+            console.error(`🟡 ❌ dateElement를 찾을 수 없음: ${dayId}Date`);
         }
-        
-        console.log(`\n=== ${day.name}요일 처리 ===`);
-        console.log(`목표 날짜: ${dateStr}`);
-        console.log(`JavaScript Date 객체:`, day.date);
-        console.log(`요일 확인: ${day.date.toLocaleDateString('ko-KR', {weekday: 'long'})}`);
-        console.log('데이터 검색 중...');
         
         const dayData = weekData.filter(item => {
             const itemDate = item.data.date;
             const match = itemDate === dateStr;
-            if (match) {
-                console.log(`  → 발견: ${item.data.description || item.data.itemName}`);
-            }
             return match;
         });
         
-        console.log(`${day.name}요일 데이터 ${dayData.length}개 발견`);
+        console.log(`🟡 ${day.name}요일 데이터: ${dayData.length}개`);
         
         // 개별 항목으로 표시하도록 dayData를 직접 전달
         populateDayBoxWithItems(day.name, dayData, dateStr);
@@ -2069,6 +2072,8 @@ function generateWeeklyGridData(weekData, weekRange) {
     
     // 주간 합계 박스 채우기
     populateTotalBox(weekData);
+    
+    console.log('🟡 generateWeeklyGridData 완료');
 }
 
 // 특정 요일의 데이터 추출 (화주별 취합)
@@ -2315,8 +2320,14 @@ function populateDayBoxWithItems(dayName, dayData, dateStr) {
             const containerDisplay = itemIndex === 0 ? container : '';
             const specDisplay = itemIndex === 0 ? (spec && spec !== '0' ? spec : '') : '';
             
+            // refValue를 안전한 ID로 변환 (특수문자 제거)
+            const safeId = record.refValue ? record.refValue.replace(/[^a-zA-Z0-9_-]/g, '_') : `item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            
+            // Container 번호를 안전한 클래스명으로 변환
+            const containerClass = container ? `container-${container.replace(/[^a-zA-Z0-9]/g, '_')}` : 'container-unknown';
+            
             html += `
-                <div class="${itemClass}" data-container-group="${containerGroupId}" data-container="${container}">
+                <div id="${safeId}" class="${itemClass} ${containerClass}" data-container-group="${containerGroupId}" data-container="${container}">
                     <div class="item-shipper">${shipper}</div>
                     <div class="item-product">${product}</div>
                     <div class="item-container">${containerDisplay}</div>
@@ -2575,7 +2586,6 @@ function addDragAndDropListeners() {
         item.draggable = true;
         item.addEventListener('dragstart', handleDragStart);
         item.addEventListener('dragend', handleDragEnd);
-        console.log(`✅ Day-item ${index + 1} 드래그 설정 완료`);
     });
     
     // 모든 day-content와 weekly-box에 드롭 영역 설정
@@ -2610,9 +2620,11 @@ function handleDragStart(e) {
     draggedItem = this;
     
     // 같은 컨테이너 그룹의 모든 아이템 찾기
-    const containerGroup = this.dataset.containerGroup;
-    const groupItems = containerGroup ? 
-        document.querySelectorAll(`[data-container-group="${containerGroup}"]`) : 
+    const container = this.dataset.container || this.querySelector('.item-container').textContent;
+    const containerClass = container ? `container-${container.replace(/[^a-zA-Z0-9]/g, '_')}` : null;
+    
+    const groupItems = containerClass ? 
+        document.querySelectorAll(`.${containerClass}`) : 
         [this];
     
     // 모든 그룹 아이템에 dragging 클래스 추가
@@ -2621,53 +2633,43 @@ function handleDragStart(e) {
     // 드래그된 아이템의 데이터 추출
     const shipper = this.querySelector('.item-shipper').textContent;
     const product = this.querySelector('.item-product').textContent;
-    // data-container 속성을 우선 사용 (빈 컨테이너 표시 항목 대응)
-    const container = this.dataset.container || this.querySelector('.item-container').textContent;
     const spec = this.querySelector('.item-spec').textContent;
     
-    console.log('🔄 드래그 시작:', {
+    console.log('🔄 드래그 시작 (컨테이너 그룹):', {
         container: container,
+        groupCount: groupItems.length,
         shipper: shipper,
         product: product,
-        spec: spec,
-        groupCount: groupItems.length
+        spec: spec
     });
     
-    // 드래그 데이터를 더 확실하게 저장
+    // 드래그 데이터 저장 (그룹 전체)
     draggedItemData = {
         container: container,
         shipper: shipper,
         product: product,
         spec: spec,
         element: this,
-        originalDate: null, // 나중에 Firebase에서 찾아서 설정
-        groupItems: Array.from(groupItems), // 그룹 아이템들 저장
-        containerGroup: containerGroup
+        groupItems: Array.from(groupItems),
+        containerClass: containerClass,
+        firebaseDataArray: null
     };
     
-    // Firebase에서 컨테이너 그룹 전체 데이터 찾기 (컨테이너 번호로 일괄 검색)
+    // Firebase에서 같은 컨테이너의 모든 데이터 찾기
     if (container) {
         findContainerGroupInFirebase(container, (groupData) => {
             if (groupData && groupData.length > 0) {
                 draggedItemData.firebaseDataArray = groupData;
                 console.log(`✅ Firebase 컨테이너 그룹 데이터 찾기 완료: ${groupData.length}개`);
-                console.log('📦 그룹 데이터:', groupData.map(d => ({
-                    container: d.container,
-                    description: d.description,
-                    refValue: d.refValue
-                })));
             } else {
                 console.warn(`⚠️ 컨테이너 ${container}의 Firebase 데이터를 찾을 수 없습니다.`);
                 draggedItemData.firebaseDataArray = [];
             }
         });
-    } else {
-        console.error('❌ 컨테이너 번호가 없습니다.');
-        draggedItemData.firebaseDataArray = [];
     }
     
     e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', container); // 브라우저 호환성을 위해
+    e.dataTransfer.setData('text/plain', container);
 }
 
 function handleDragEnd(e) {
@@ -2677,6 +2679,7 @@ function handleDragEnd(e) {
     });
     
     draggedItem = null;
+    draggedItemData = null;
     
     // 모든 드롭 영역의 하이라이트 제거
     document.querySelectorAll('.day-content').forEach(content => {
@@ -2786,6 +2789,23 @@ function handleDropLogic(e, targetElement) {
         return false;
     }
     
+    // Firebase 데이터가 아직 로드되지 않았는지 확인
+    if (!draggedItemData.firebaseDataArray) {
+        console.error('❌ Firebase 데이터가 아직 로드되지 않았습니다. 잠시 후 다시 시도해주세요.');
+        alert('데이터를 불러오는 중입니다. 잠시 후 다시 드래그해주세요.');
+        return false;
+    }
+    
+    if (draggedItemData.firebaseDataArray.length === 0) {
+        console.error('❌ Firebase에서 컨테이너 그룹 데이터를 찾을 수 없습니다.');
+        alert('컨테이너 데이터를 찾을 수 없습니다. 페이지를 새로고침 후 다시 시도해주세요.');
+        return false;
+    }
+    
+    // 에러 메시지에서 사용할 컨테이너 정보를 미리 저장 (draggedItemData가 null이 되기 전에)
+    const containerNumber = draggedItemData.container;
+    const totalCount = draggedItemData.firebaseDataArray.length;
+    
     // 드롭된 영역의 요일 확인
     const dayContentId = targetElement.id;
     const targetDay = dayContentId.replace('Content', '');
@@ -2817,19 +2837,18 @@ function handleDropLogic(e, targetElement) {
         return false;
     }
     
-    // Firebase 데이터 확인 - 그룹 전체 업데이트 (refValue 기반)
+    // Firebase 데이터 확인 - 그룹 전체 이동 및 삭제
     if (draggedItemData.firebaseDataArray && draggedItemData.firebaseDataArray.length > 0) {
-        console.log(`🔄 ${draggedItemData.firebaseDataArray.length}개 항목 이동 시작 (refValue 기반)...`);
+        console.log(`🔄 ${totalCount}개 항목 이동 시작 (그룹)...`);
         
         let updateCount = 0;
-        let totalCount = draggedItemData.firebaseDataArray.length;
+        let errorCount = 0;
         
         // 모든 항목을 순차적으로 처리: 기존 경로 삭제 → 새 경로 업로드
         draggedItemData.firebaseDataArray.forEach((data, index) => {
             if (data && data.refValue) {
-                // refValue를 Firebase 경로로 사용
                 const oldPath = data.refValue;
-                console.log(`📍 기존 경로: ${oldPath}`);
+                console.log(`📍 [${index + 1}/${totalCount}] 기존 경로: ${oldPath}`);
                 
                 // 새로운 경로 생성: yyyy/mm/dd/consignee/recordKey
                 const [year, month, day] = newDate.split('-');
@@ -2840,12 +2859,12 @@ function handleDropLogic(e, targetElement) {
                 const recordKey = pathParts[pathParts.length - 1];
                 
                 const newPath = `DeptName/WareHouseDept2/InCargo/${year}/${month}/${day}/${consignee}/${recordKey}`;
-                console.log(`📍 새 경로: ${newPath}`);
+                console.log(`📍 [${index + 1}/${totalCount}] 새 경로: ${newPath}`);
                 
                 // 1단계: 기존 경로에서 삭제
                 const oldRef = window.firebaseRef(window.firebaseDb, oldPath);
                 window.firebaseSet(oldRef, null).then(() => {
-                    console.log(`✅ 기존 경로 삭제 완료: ${oldPath}`);
+                    console.log(`✅ [${index + 1}/${totalCount}] 기존 경로 삭제 완료: ${oldPath}`);
                     
                     // 2단계: 업데이트된 데이터를 새 경로에 업로드
                     const updatedData = {
@@ -2855,35 +2874,39 @@ function handleDropLogic(e, targetElement) {
                         updatedAt: new Date().toISOString()
                     };
                     
-                    // refValue, key 같은 메타데이터 제거
+                    // 메타데이터 제거
                     delete updatedData.key;
                     
                     const newRef = window.firebaseRef(window.firebaseDb, newPath);
                     return window.firebaseSet(newRef, updatedData);
                 }).then(() => {
                     updateCount++;
-                    console.log(`✅ ${updateCount}/${totalCount} 이동 완료 (삭제 → 업로드)`);
+                    console.log(`✅ [${updateCount}/${totalCount}] 이동 완료 (삭제 → 업로드)`);
                     
                     // 모든 업데이트가 완료되면 주간요약창 새로고침
-                    if (updateCount === totalCount) {
+                    if (updateCount + errorCount === totalCount) {
                         console.log('✅ 모든 데이터 이동 완료, 주간요약창 새로고침 중...');
-                        alert(`${draggedItemData.container} 관련 ${totalCount}개 항목이 ${targetDayKorean}요일로 이동되었습니다!`);
-                        // 주간요약창 갱신
+                        const successMsg = errorCount > 0 ? 
+                            `${containerNumber} 관련 ${updateCount}개 항목이 ${targetDayKorean}요일로 이동되었습니다. (${errorCount}개 실패)` :
+                            `${containerNumber} 관련 ${totalCount}개 항목이 ${targetDayKorean}요일로 이동되었습니다!`;
+                        alert(successMsg);
                         loadWeeklySummaryData();
                     }
                 }).catch((error) => {
-                    console.error(`❌ 데이터 이동 실패: ${oldPath} → ${newPath}`, error);
-                    updateCount++;
-                    if (updateCount === totalCount) {
-                        alert(`일부 데이터 이동이 실패했습니다. ${error.message}`);
+                    errorCount++;
+                    console.error(`❌ [${index + 1}/${totalCount}] 데이터 이동 실패: ${oldPath} → ${newPath}`, error);
+                    
+                    if (updateCount + errorCount === totalCount) {
+                        alert(`일부 데이터 이동이 실패했습니다. 성공: ${updateCount}개, 실패: ${errorCount}개`);
                         loadWeeklySummaryData();
                     }
                 });
             } else {
-                console.error('❌ refValue가 없는 데이터:', data);
-                totalCount--;
-                if (updateCount === totalCount && totalCount > 0) {
-                    alert(`${draggedItemData.container} 관련 ${totalCount}개 항목이 ${targetDayKorean}요일로 이동되었습니다!`);
+                errorCount++;
+                console.error(`❌ [${index + 1}/${totalCount}] refValue가 없는 데이터:`, data);
+                
+                if (updateCount + errorCount === totalCount) {
+                    alert(`${containerNumber} 관련 ${updateCount}개 항목이 ${targetDayKorean}요일로 이동되었습니다.`);
                     loadWeeklySummaryData();
                 }
             }
@@ -2894,6 +2917,78 @@ function handleDropLogic(e, targetElement) {
     }
     
     return true;
+}
+
+// Firebase에서 ID로 단일 항목 데이터 찾기
+function findItemByIdInFirebase(itemId, callback) {
+    if (!window.firebaseDb) {
+        console.error('❌ Firebase 데이터베이스가 초기화되지 않았습니다.');
+        callback(null);
+        return;
+    }
+    
+    console.log('🔍 Firebase에서 ID로 항목 검색 시작:', itemId);
+    
+    // 전체 InCargo 데이터에서 검색
+    const inCargoRef = window.firebaseRef(window.firebaseDb, 'DeptName/WareHouseDept2/InCargo');
+    window.firebaseOnValue(inCargoRef, (snapshot) => {
+        if (snapshot.exists()) {
+            const data = snapshot.val();
+            let foundItem = null;
+            
+            // 깊이 검색으로 refValue와 매칭되는 데이터 찾기
+            function findItemByRefValue(obj, path = '') {
+                if (obj === null || obj === undefined || foundItem) return;
+                
+                if (typeof obj === 'object' && !Array.isArray(obj)) {
+                    const keys = Object.keys(obj);
+                    
+                    for (const key of keys) {
+                        if (foundItem) break;
+                        
+                        const currentPath = path ? `${path}/${key}` : key;
+                        const value = obj[key];
+                        
+                        if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+                            // 이것이 실제 데이터 레코드인지 확인
+                            const hasNestedObjects = Object.values(value).some(v => 
+                                typeof v === 'object' && v !== null && !Array.isArray(v)
+                            );
+                            
+                            if (!hasNestedObjects && value.refValue) {
+                                // refValue를 ID로 변환하여 비교
+                                const dataId = value.refValue.replace(/[^a-zA-Z0-9_-]/g, '_');
+                                if (dataId === itemId) {
+                                    console.log(`✅ ID 매칭 발견: ${currentPath}`);
+                                    foundItem = {
+                                        key: currentPath,
+                                        ...value
+                                    };
+                                    break;
+                                }
+                            } else {
+                                // 더 깊이 탐색
+                                findItemByRefValue(value, currentPath);
+                            }
+                        }
+                    }
+                }
+            }
+            
+            findItemByRefValue(data);
+            
+            if (foundItem) {
+                console.log(`✅ 항목 찾기 성공:`, foundItem.refValue);
+                callback(foundItem);
+            } else {
+                console.error('❌ ID에 해당하는 항목을 찾을 수 없습니다:', itemId);
+                callback(null);
+            }
+        } else {
+            console.error('❌ InCargo 데이터가 없습니다.');
+            callback(null);
+        }
+    }, { onlyOnce: true });
 }
 
 // Firebase에서 컨테이너 그룹 전체 데이터 찾기 (컨테이너 번호로 일괄 검색)
@@ -4304,6 +4399,73 @@ function exportTableToExcel() {
     }
 }
 
+// Toast 메시지 표시 함수
+function showToast(message, duration = 3000) {
+    // 기존 toast가 있으면 제거
+    const existingToast = document.querySelector('.toast');
+    if (existingToast) {
+        existingToast.remove();
+    }
+    
+    // 새 toast 생성
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    
+    // 애니메이션으로 표시
+    setTimeout(() => {
+        toast.classList.add('show');
+    }, 10);
+    
+    // 지정된 시간 후 제거
+    setTimeout(() => {
+        toast.classList.remove('show');
+        setTimeout(() => {
+            toast.remove();
+        }, 300);
+    }, duration);
+}
+
+// 다음주로 이동하는 함수
+async function loadNextWeekSummary() {
+    try {
+        console.log('�🔵🔵 다음주 데이터 로드 시작 🔵🔵🔵');
+        
+        // 다음주 날짜 범위 계산
+        const weekRange = getDateRange('nextWeek');
+        const startDate = formatDateToLocal(weekRange.start);
+        const endDate = formatDateToLocal(weekRange.end);
+        
+        console.log(`🔵 다음주 weekRange:`, weekRange);
+        console.log(`🔵 다음주 시작일: ${startDate} (${weekRange.start.toLocaleDateString('ko-KR')})`);
+        console.log(`🔵 다음주 종료일: ${endDate} (${weekRange.end.toLocaleDateString('ko-KR')})`);
+        
+        // Firebase에서 다음주 데이터 가져오기
+        const weeklyData = await getInCargoLeafData(startDate, endDate);
+        
+        console.log(`🔵 다음주 데이터 ${weeklyData.length}개 로드 완료`);
+        if (weeklyData.length > 0) {
+            console.log(`🔵 첫 번째 데이터 샘플:`, weeklyData[0]);
+        }
+        
+        // 주간 데이터로 리포트 생성
+        console.log(`🔵 generateWeeklySummaryReportWithData 호출 시작`);
+        generateWeeklySummaryReportWithData(weeklyData, weekRange);
+        console.log(`🔵 generateWeeklySummaryReportWithData 호출 완료`);
+        
+        // Toast 메시지 표시
+        const startDateFormatted = weekRange.start.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' });
+        const endDateFormatted = weekRange.end.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric' });
+        showToast(`📅 다음주 데이터 로드 완료\n${startDateFormatted} ~ ${endDateFormatted}`, 3000);
+        
+    } catch (error) {
+        console.error('❌ 다음주 데이터 로드 실패:', error);
+        console.error('❌ 에러 상세:', error.stack);
+        showToast('❌ 데이터 로드 실패', 3000);
+    }
+}
+
 // 페이지 로드 시 초기화
 document.addEventListener('DOMContentLoaded', function() {
     console.log('화인통상 물류 컨테이너 관리 시스템이 로드되었습니다.');
@@ -4325,8 +4487,74 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('startDate').value = today;
     document.getElementById('endDate').value = today;
     
+    // 시작일 변경 시 종료일도 동일하게 설정
+    const startDateInput = document.getElementById('startDate');
+    const endDateInput = document.getElementById('endDate');
+    if (startDateInput && endDateInput) {
+        startDateInput.addEventListener('change', function() {
+            endDateInput.value = this.value;
+            console.log(`📅 시작일 변경 → 종료일 자동 설정: ${this.value}`);
+        });
+    }
+    
     // Firebase에서 InCargo 데이터 자동 로드 후 오늘 필터 적용
     loadInCargoDataOnPageLoad();
+    
+    // 주간요약 탭 1초 이상 클릭 유지 시 이벤트
+    const summaryTabBtn = document.querySelector('[data-tab="summary"]');
+    console.log('🟣 주간요약 탭 버튼 찾기 시도:', summaryTabBtn !== null ? '성공' : '실패');
+    if (summaryTabBtn) {
+        console.log('🟣 주간요약 탭 버튼 정보:', summaryTabBtn.textContent, summaryTabBtn.className);
+        let longPressTimer = null;
+        // 전역 변수로 변경 (switchMainTab에서 체크하기 위해)
+        window.isLongPressingTab = false;
+        
+        summaryTabBtn.addEventListener('mousedown', function(e) {
+            console.log('🟣🟣🟣 마우스 다운 이벤트 발생! 🟣🟣🟣');
+            window.isLongPressingTab = false;
+            longPressTimer = setTimeout(() => {
+                console.log('🟣🟣🟣 1초 경과! 다음주 로드 시작! 🟣🟣🟣');
+                window.isLongPressingTab = true;
+                // 다음주 데이터 로드
+                loadNextWeekSummary();
+            }, 1000); // 1초
+        });
+        
+        summaryTabBtn.addEventListener('mouseup', function(e) {
+            console.log('🟣 마우스 업 이벤트 발생, isLongPressingTab:', window.isLongPressingTab);
+            if (longPressTimer) {
+                clearTimeout(longPressTimer);
+            }
+            
+            // Long press였다면 이벤트 전파 막기 (HTML onclick은 막을 수 없으므로 switchMainTab에서 체크)
+            if (window.isLongPressingTab) {
+                console.log('🟣 Long press 감지 - HTML onclick은 실행되지만 switchMainTab에서 차단됨');
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+                // 0.5초 후 리셋 (switchMainTab 실행 후)
+                setTimeout(() => {
+                    window.isLongPressingTab = false;
+                    console.log('🟣 isLongPressingTab 플래그 리셋 완료');
+                }, 500);
+                return false;
+            }
+            
+            // 일반 클릭 처리 (1초 미만)
+            console.log('🟣 일반 클릭 (1초 미만) - 기존 탭 전환 허용');
+        });
+        
+        summaryTabBtn.addEventListener('mouseleave', function(e) {
+            console.log('🟣 마우스 이탈 이벤트 발생');
+            if (longPressTimer) {
+                clearTimeout(longPressTimer);
+            }
+        });
+        
+        console.log('✅ 주간요약 탭 장시간 클릭 이벤트 리스너 추가됨');
+    } else {
+        console.error('❌ 주간요약 탭 버튼을 찾을 수 없습니다!');
+    }
     
     // 화주명 toggle button 이벤트 리스너 추가
     const shipperToggleBtn = document.getElementById('shipperToggleBtn');

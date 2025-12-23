@@ -1519,6 +1519,28 @@ tbody tr.shipper-group td.shipper-cell {
     font-weight: bold;
 }
 
+/* Toast 메시지 스타일 */
+.toast {
+    position: fixed;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 15px 30px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    font-size: 16px;
+    font-weight: bold;
+    z-index: 10000;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.toast.show {
+    opacity: 1;
+}
+
 @media (max-width: 768px) {
     .container {
         padding: 10px;
