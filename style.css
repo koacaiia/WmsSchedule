@@ -743,50 +743,65 @@ tbody tr.shipper-group td.shipper-cell {
 
 .box-header {
     background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
-    color: white;
-    padding: 5px 6px;
+    color: black;
+    padding: 8px 10px;
     font-weight: bold;
-    font-size: 9px;
+    font-size: 12px;
+    flex: 1;
     flex-shrink: 0;
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 4px;
+    flex-direction: column;
+    justify-content: center;
+    align-items: stretch;
+    gap: 0;
 }
 
 .box-summary-header {
     display: flex;
-    gap: 3px;
+    gap: 6px;
     align-items: center;
-    font-size: 7px;
+    font-size: 9px;
     flex-wrap: wrap;
+    width: 100%;
+    justify-content: flex-start;
+    line-height: 1.4;
+    flex: 3;
 }
 
 .summary-spec-item {
     display: flex;
     align-items: center;
     gap: 2px;
-    padding: 1px 3px;
-    border-radius: 2px;
+    padding: 2px 4px;
+    border-radius: 3px;
     font-weight: bold;
-    min-width: 20px;
+    min-width: 50px;
     justify-content: center;
+    font-size: 8px;
 }
 
 .summary-spec-item.spec-40ft {
-    background-color: red;
+    background-color: #dc3545;
     color: white;
 }
 
 .summary-spec-item.spec-20ft {
-    background-color: white;
-    color: black;
+    background-color: #ffffff;
+    color: #333;
+    border: 1px solid #ddd;
 }
 
 .summary-spec-item.spec-lcl {
-    background-color: red;
+    background-color: #ffc107;
+    color: #333;
+}
+
+.summary-spec-item.spec-total {
+    background-color: #28a745;
     color: white;
+    font-weight: bold;
+    margin-left: 8px;
+    padding: 2px 6px;
 }
 
 .summary-spec-item.spec-other {
@@ -794,10 +809,21 @@ tbody tr.shipper-group td.shipper-cell {
     color: white;
 }
 
+.spec-count {
+    font-weight: bold;
+    margin-left: 2px;
+}
+
 .summary-shipper-name {
     font-weight: bold;
-    color: #333;
+    color: #ffffff;
     margin-right: 5px;
+    background-color: rgba(255, 255, 255, 0.2);
+    padding: 2px 6px;
+    border-radius: 3px;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
 }
 
 .summary-separator {
@@ -805,17 +831,35 @@ tbody tr.shipper-group td.shipper-cell {
     color: #ddd;
 }
 
+.day-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    gap: 10px;
+    flex: 1;
+}
+
 .day-name {
     font-weight: bold;
+    flex-shrink: 0;
+}
+
+.day-total {
+    flex: 1;
+    text-align: center;
+    font-size: 10px;
 }
 
 .day-date {
-    font-size: 8px;
+    font-size: 11px;
     opacity: 0.9;
+    flex-shrink: 0;
 }
 
 .total-box .box-header {
     background: linear-gradient(135deg, #28a745 0%, #1e7e34 100%);
+    color: black;
     justify-content: space-between;
 }
 
@@ -867,7 +911,7 @@ tbody tr.shipper-group td.shipper-cell {
 
 /* 박스 바디 - 단일 컬럼 레이아웃 */
 .box-body {
-    flex: 1;
+    flex: 3;
     padding: 4px;
     overflow: hidden;
 }

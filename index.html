@@ -87,8 +87,11 @@
                     <!-- 월요일 박스 -->
                     <div class="weekly-box" id="mondayBox">
                         <div class="box-header">
-                            <div class="day-name">월요일</div>
-                            <div class="day-date" id="mondayDate">12/01</div>
+                            <div class="day-header-row">
+                                <div class="day-name">월요일</div>
+                                <div class="day-total" id="mondayTotal"></div>
+                                <div class="day-date" id="mondayDate">12/01</div>
+                            </div>
                             <div class="box-summary-header" id="mondaySummaryHeader"></div>
                         </div>
                         <div class="box-body">
@@ -101,8 +104,11 @@
                     <!-- 화요일 박스 -->
                     <div class="weekly-box" id="tuesdayBox">
                         <div class="box-header">
-                            <div class="day-name">화요일</div>
-                            <div class="day-date" id="tuesdayDate">12/02</div>
+                            <div class="day-header-row">
+                                <div class="day-name">화요일</div>
+                                <div class="day-total" id="tuesdayTotal"></div>
+                                <div class="day-date" id="tuesdayDate">12/02</div>
+                            </div>
                             <div class="box-summary-header" id="tuesdaySummaryHeader"></div>
                         </div>
                         <div class="box-body">
@@ -115,8 +121,11 @@
                     <!-- 수요일 박스 -->
                     <div class="weekly-box" id="wednesdayBox">
                         <div class="box-header">
-                            <div class="day-name">수요일</div>
-                            <div class="day-date" id="wednesdayDate">12/03</div>
+                            <div class="day-header-row">
+                                <div class="day-name">수요일</div>
+                                <div class="day-total" id="wednesdayTotal"></div>
+                                <div class="day-date" id="wednesdayDate">12/03</div>
+                            </div>
                             <div class="box-summary-header" id="wednesdaySummaryHeader"></div>
                         </div>
                         <div class="box-body">
@@ -129,8 +138,11 @@
                     <!-- 목요일 박스 -->
                     <div class="weekly-box" id="thursdayBox">
                         <div class="box-header">
-                            <div class="day-name">목요일</div>
-                            <div class="day-date" id="thursdayDate">12/04</div>
+                            <div class="day-header-row">
+                                <div class="day-name">목요일</div>
+                                <div class="day-total" id="thursdayTotal"></div>
+                                <div class="day-date" id="thursdayDate">12/04</div>
+                            </div>
                             <div class="box-summary-header" id="thursdaySummaryHeader"></div>
                         </div>
                         <div class="box-body">
@@ -143,8 +155,11 @@
                     <!-- 금요일 박스 -->
                     <div class="weekly-box" id="fridayBox">
                         <div class="box-header">
-                            <div class="day-name">금요일</div>
-                            <div class="day-date" id="fridayDate">12/05</div>
+                            <div class="day-header-row">
+                                <div class="day-name">금요일</div>
+                                <div class="day-total" id="fridayTotal"></div>
+                                <div class="day-date" id="fridayDate">12/05</div>
+                            </div>
                             <div class="box-summary-header" id="fridaySummaryHeader"></div>
                         </div>
                         <div class="box-body">
@@ -157,12 +172,15 @@
                     <!-- 주간 합계 박스 -->
                     <div class="weekly-box total-box" id="totalBox">
                         <div class="box-header">
-                            <button id="totalSummaryBtn" onclick="showWeeklyTotal()">주간 합계</button>
-                            <!-- 화주명 필터 -->
-                            <div class="shipper-filter-inline">
-                                <select id="shipperSelect" onchange="filterByShipper()">
-                                    <option value="">전체 화주</option>
-                                </select>
+                            <div class="day-header-row">
+                                <button id="totalSummaryBtn" onclick="showWeeklyTotal()">주간 합계</button>
+                                <div class="day-total" id="totalTotal"></div>
+                                <!-- 화주명 필터 -->
+                                <div class="shipper-filter-inline">
+                                    <select id="shipperSelect" onchange="filterByShipper()">
+                                        <option value="">전체 화주</option>
+                                    </select>
+                                </div>
                             </div>
                             <div class="box-summary-header" id="totalSummaryHeader"></div>
                         </div>

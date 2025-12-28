@@ -2279,62 +2279,60 @@ function populateDayBoxWithItems(dayName, dayData, dateStr) {
         const items = containerGroups[container];
         const colorClass = `container-group-${groupIndex % 5}`; // 5가지 색상 순환
         
-        items.forEach((item, itemIndex) => {
-            const record = item.data;
-            let shipper = record.consignee || record.shipper || '미분류';
-            
-            // consignee 값에서 괄호 안의 값만 추출
-            const parenthesesMatch = shipper.match(/\(([^)]+)\)/);
-            if (parenthesesMatch) {
-                shipper = parenthesesMatch[1];
-            }
-            
-            const product = record.description || record.itemName || '미분류';
-            const spec = record.spec || '';
-            const shape = record.shape || '';
-            
-            // 조건부 클래스 추가
-            let itemClass = `day-item ${colorClass}`;
-            if (spec === '40FT') {
-                itemClass += ' spec-40 spec-40FT';
-            } else if (spec === '20FT') {
-                itemClass += ' spec-20FT';
-            } else if (spec === 'LCL'|| spec.includes('L')) {
-                itemClass += ' spec-LCL';
-            }
-            if (shape === 'Bulk') {
-                itemClass += ' shape-bulk';
-            }
-            
-            // 컨테이너 그룹 ID 추가 (같은 컨테이너 번호끼리 묶기 위해)
-            const containerGroupId = container.replace(/[^a-zA-Z0-9]/g, '_');
-            
-            // 그룹의 마지막 항목에 클래스 추가
-            const isLastInGroup = itemIndex === items.length - 1;
-            if (isLastInGroup) {
-                itemClass += ' group-last';
-            }
-            
-            // 첫 번째 항목에만 컨테이너와 Spec 표시, 나머지는 빈 문자열
-            // spec은 실제 값이 있고 '0'이 아닐 때만 표시
-            const containerDisplay = itemIndex === 0 ? container : '';
-            const specDisplay = itemIndex === 0 ? (spec && spec !== '0' ? spec : '') : '';
-            
-            // refValue를 안전한 ID로 변환 (특수문자 제거)
-            const safeId = record.refValue ? record.refValue.replace(/[^a-zA-Z0-9_-]/g, '_') : `item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-            
-            // Container 번호를 안전한 클래스명으로 변환
-            const containerClass = container ? `container-${container.replace(/[^a-zA-Z0-9]/g, '_')}` : 'container-unknown';
-            
-            html += `
-                <div id="${safeId}" class="${itemClass} ${containerClass}" data-container-group="${containerGroupId}" data-container="${container}">
-                    <div class="item-shipper">${shipper}</div>
-                    <div class="item-product">${product}</div>
-                    <div class="item-container">${containerDisplay}</div>
-                    <div class="item-spec">${specDisplay}</div>
-                </div>
-            `;
-        });
+        // 첫 번째 항목만 표시
+        const firstItem = items[0];
+        const record = firstItem.data;
+        let shipper = record.consignee || record.shipper || '미분류';
+        
+        // consignee 값에서 괄호 안의 값만 추출
+        const parenthesesMatch = shipper.match(/\(([^)]+)\)/);
+        if (parenthesesMatch) {
+            shipper = parenthesesMatch[1];
+        }
+        
+        const firstProduct = record.description || record.itemName || '미분류';
+        const spec = record.spec || '';
+        const shape = record.shape || '';
+        
+        // 나머지 항목이 있으면 "외 N개" 추가
+        let productDisplay = firstProduct;
+        if (items.length > 1) {
+            productDisplay = `${firstProduct} <span style="font-style: italic; font-weight: bold; color: red; text-decoration: underline;">외 ${items.length - 1}개</span>`;
+        }
+        
+        // 조건부 클래스 추가
+        let itemClass = `day-item ${colorClass}`;
+        if (spec === '40FT') {
+            itemClass += ' spec-40 spec-40FT';
+        } else if (spec === '20FT') {
+            itemClass += ' spec-20FT';
+        } else if (spec === 'LCL'|| spec.includes('L')) {
+            itemClass += ' spec-LCL';
+        }
+        if (shape === 'Bulk') {
+            itemClass += ' shape-bulk';
+        }
+        
+        // 컨테이너 그룹 ID 추가
+        const containerGroupId = container.replace(/[^a-zA-Z0-9]/g, '_');
+        
+        // refValue를 안전한 ID로 변환 (특수문자 제거)
+        const safeId = record.refValue ? record.refValue.replace(/[^a-zA-Z0-9_-]/g, '_') : `item_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        
+        // Container 번호를 안전한 클래스명으로 변환
+        const containerClass = container ? `container-${container.replace(/[^a-zA-Z0-9]/g, '_')}` : 'container-unknown';
+        
+        // spec 표시 (값이 있고 '0'이 아닐 때만)
+        const specDisplay = spec && spec !== '0' ? spec : '';
+        
+        html += `
+            <div id="${safeId}" class="${itemClass} ${containerClass}" data-container-group="${containerGroupId}" data-container="${container}">
+                <div class="item-shipper">${shipper}</div>
+                <div class="item-product">${productDisplay}</div>
+                <div class="item-container">${container}</div>
+                <div class="item-spec">${specDisplay}</div>
+            </div>
+        `;
     });
     
     contentElement.innerHTML = html;
@@ -3846,7 +3844,7 @@ function generateShipperHeaderSummaryHtml(shipperSpecCounts, maxShippers) {
     return summaryHtml;
 }
 
-// 요일별 헤더 요약 생성 - 화주별 주요 Spec 색상으로 표시
+// 요일별 헤더 요약 생성 - 화주별로 Spec별 집계 형식으로 표시
 function generateDayHeaderSummary(dayName, dayData) {
     console.log(`🔍 generateDayHeaderSummary 호출: ${dayName}, 데이터 수: ${dayData ? dayData.length : 0}`);
     
@@ -3858,46 +3856,252 @@ function generateDayHeaderSummary(dayName, dayData) {
         '금': 'friday'
     };
     
-    const headerSummaryElementId = dayIdMap[dayName] + 'SummaryHeader';
-    const headerSummaryElement = document.getElementById(headerSummaryElementId);
+    const dayId = dayIdMap[dayName];
+    const dayDateElement = document.getElementById(`${dayId}Date`);
+    const dayTotalElement = document.getElementById(`${dayId}Total`);
+    const headerSummaryElement = document.getElementById(`${dayId}SummaryHeader`);
     
-    if (!headerSummaryElement) {
-        console.error(`헤더 요약 요소를 찾을 수 없습니다: ${headerSummaryElementId}`);
+    if (!dayDateElement || !headerSummaryElement || !dayTotalElement) {
+        console.error(`요소를 찾을 수 없습니다: ${dayId}Date 또는 ${dayId}SummaryHeader 또는 ${dayId}Total`);
         return;
     }
     
     if (!dayData || dayData.length === 0) {
         console.log(`❌ ${dayName} 데이터 없음`);
+        dayTotalElement.innerHTML = '';
         headerSummaryElement.innerHTML = '';
         return;
     }
     
-    // 공통 헬퍼 함수 사용
-    const shipperSpecCounts = aggregateShipperSpecData(dayData, dayName);
-    const summaryHtml = generateShipperHeaderSummaryHtml(shipperSpecCounts, 4);
+    // 화주별, Spec별 컨테이너 수 집계
+    const shipperSpecCounts = {};
+    const totalSpecCounts = {
+        '20FT': new Set(),
+        '40FT': new Set(),
+        'LCL': new Set()
+    };
     
-    console.log(`✅ ${dayName} 헤더 HTML:`, summaryHtml);
+    dayData.forEach(item => {
+        const record = item.data;
+        let shipper = record.consignee || record.shipper || '미분류';
+        
+        // consignee 값에서 괄호 안의 값만 추출
+        const parenthesesMatch = shipper.match(/\(([^)]+)\)/);
+        if (parenthesesMatch) {
+            shipper = parenthesesMatch[1];
+        }
+        
+        let spec = record.spec || '기타';
+        const container = record.container || '';
+        
+        // Spec 값 정규화
+        if (spec) {
+            spec = spec.toString().trim().toUpperCase();
+            if (spec.includes('40') && spec.includes('F')) {
+                spec = '40FT';
+            } else if (spec.includes('20') && spec.includes('F')) {
+                spec = '20FT';
+            } else if (spec.includes('LCL') || spec.includes('L')) {
+                spec = 'LCL';
+            }
+        }
+        
+        // 화주별 집계
+        if (!shipperSpecCounts[shipper]) {
+            shipperSpecCounts[shipper] = {
+                '20FT': new Set(),
+                '40FT': new Set(),
+                'LCL': new Set()
+            };
+        }
+        
+        if (container) {
+            if (shipperSpecCounts[shipper][spec]) {
+                shipperSpecCounts[shipper][spec].add(container);
+            }
+            if (totalSpecCounts[spec]) {
+                totalSpecCounts[spec].add(container);
+            }
+        }
+    });
+    
+    // 화주별로 컨테이너 총 수 계산하여 정렬
+    const shipperTotalCounts = {};
+    Object.keys(shipperSpecCounts).forEach(shipper => {
+        const allContainers = new Set();
+        Object.values(shipperSpecCounts[shipper]).forEach(containers => {
+            containers.forEach(container => allContainers.add(container));
+        });
+        shipperTotalCounts[shipper] = allContainers.size;
+    });
+    
+    const sortedShippers = Object.entries(shipperTotalCounts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 4); // 상위 4개 화주만 표시
+    
+    // HTML 생성 (화주별)
+    let summaryHtml = '';
+    const specOrder = ['20FT', '40FT', 'LCL'];
+    
+    // 화주별로 표시 - 한 요소로 구성
+    sortedShippers.forEach(([shipper, totalCount]) => {
+        const specItems = specOrder
+            .filter(spec => shipperSpecCounts[shipper][spec].size > 0)
+            .map(spec => {
+                const count = shipperSpecCounts[shipper][spec].size;
+                return `${spec}(${count})`;
+            })
+            .join(', ');
+        
+        summaryHtml += `<span class="summary-shipper-name">${shipper}: ${specItems}</span>`;
+    });
+    
+    // TOTAL 표시 생성
+    let totalCount = 0;
+    specOrder.forEach(spec => {
+        totalCount += totalSpecCounts[spec].size;
+    });
+    
+    let totalHtml = '';
+    if (totalCount > 0) {
+        const totalBreakdown = specOrder
+            .filter(spec => totalSpecCounts[spec].size > 0)
+            .map(spec => `${spec}(${totalSpecCounts[spec].size})`)
+            .join(', ');
+        
+        totalHtml = `TOTAL: ${totalBreakdown}`;
+    }
+    
+    // TOTAL을 day-total 요소에 표시
+    dayTotalElement.innerHTML = totalHtml;
+    
+    // 화주별 요약을 box-summary-header에 표시
     headerSummaryElement.innerHTML = summaryHtml;
+    
+    console.log(`✅ ${dayName} TOTAL:`, totalHtml);
+    console.log(`✅ ${dayName} 화주별 요약:`, summaryHtml);
 }
 
-// 주간 총합 헤더 요약 생성 - 화주별 주요 Spec 색상으로 표시
+// 주간 총합 헤더 요약 생성 - 화주별로 Spec별 집계 형식으로 표시
 function generateTotalHeaderSummary(weekData) {
+    // 주간 합계의 경우도 동일하게 처리 (화주별 요약은 box-summary-header에 표시)
+    const dayTotalElement = document.getElementById('totalTotal');
     const headerSummaryElement = document.getElementById('totalSummaryHeader');
     
-    if (!headerSummaryElement) {
-        console.error('주간 총합 헤더 요약 요소를 찾을 수 없습니다: totalSummaryHeader');
+    if (!dayTotalElement || !headerSummaryElement) {
+        console.error('주간 총합 헤더 요약 요소를 찾을 수 없습니다: totalTotal 또는 totalSummaryHeader');
         return;
     }
     
     if (!weekData || weekData.length === 0) {
+        dayTotalElement.innerHTML = '';
         headerSummaryElement.innerHTML = '';
         return;
     }
     
-    // 공통 헬퍼 함수 사용
-    const shipperSpecCounts = aggregateShipperSpecData(weekData);
-    const summaryHtml = generateShipperHeaderSummaryHtml(shipperSpecCounts, 6);
+    // 화주별, Spec별 컨테이너 수 집계
+    const shipperSpecCounts = {};
+    const totalSpecCounts = {
+        '20FT': new Set(),
+        '40FT': new Set(),
+        'LCL': new Set()
+    };
     
+    weekData.forEach(item => {
+        const record = item.data;
+        let shipper = record.consignee || record.shipper || '미분류';
+        
+        // consignee 값에서 괄호 안의 값만 추출
+        const parenthesesMatch = shipper.match(/\(([^)]+)\)/);
+        if (parenthesesMatch) {
+            shipper = parenthesesMatch[1];
+        }
+        
+        let spec = record.spec || '기타';
+        const container = record.container || '';
+        
+        // Spec 값 정규화
+        if (spec) {
+            spec = spec.toString().trim().toUpperCase();
+            if (spec.includes('40') && spec.includes('F')) {
+                spec = '40FT';
+            } else if (spec.includes('20') && spec.includes('F')) {
+                spec = '20FT';
+            } else if (spec.includes('LCL') || spec.includes('L')) {
+                spec = 'LCL';
+            }
+        }
+        
+        // 화주별 집계
+        if (!shipperSpecCounts[shipper]) {
+            shipperSpecCounts[shipper] = {
+                '20FT': new Set(),
+                '40FT': new Set(),
+                'LCL': new Set()
+            };
+        }
+        
+        if (container) {
+            if (shipperSpecCounts[shipper][spec]) {
+                shipperSpecCounts[shipper][spec].add(container);
+            }
+            if (totalSpecCounts[spec]) {
+                totalSpecCounts[spec].add(container);
+            }
+        }
+    });
+    
+    // 화주별로 컨테이너 총 수 계산하여 정렬
+    const shipperTotalCounts = {};
+    Object.keys(shipperSpecCounts).forEach(shipper => {
+        const allContainers = new Set();
+        Object.values(shipperSpecCounts[shipper]).forEach(containers => {
+            containers.forEach(container => allContainers.add(container));
+        });
+        shipperTotalCounts[shipper] = allContainers.size;
+    });
+    
+    const sortedShippers = Object.entries(shipperTotalCounts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 6); // 상위 6개 화주만 표시
+    
+    // HTML 생성 (화주별)
+    let summaryHtml = '';
+    const specOrder = ['20FT', '40FT', 'LCL'];
+    
+    // 화주별로 표시 - 한 요소로 구성
+    sortedShippers.forEach(([shipper, totalCount]) => {
+        const specItems = specOrder
+            .filter(spec => shipperSpecCounts[shipper][spec].size > 0)
+            .map(spec => {
+                const count = shipperSpecCounts[shipper][spec].size;
+                return `${spec}(${count})`;
+            })
+            .join(', ');
+        
+        summaryHtml += `<span class="summary-shipper-name">${shipper}: ${specItems}</span>`;
+    });
+    
+    // TOTAL만 별도로 추출
+    let totalCount = 0;
+    specOrder.forEach(spec => {
+        totalCount += totalSpecCounts[spec].size;
+    });
+    
+    let totalHtml = '';
+    if (totalCount > 0) {
+        const totalBreakdown = specOrder
+            .filter(spec => totalSpecCounts[spec].size > 0)
+            .map(spec => `${spec}(${totalSpecCounts[spec].size})`)
+            .join(', ');
+        
+        totalHtml = `TOTAL: ${totalBreakdown}`;
+    }
+    
+    // TOTAL을 day-total 요소에 표시
+    dayTotalElement.innerHTML = totalHtml;
+    
+    // 화주별 요약은 box-summary-header에 표시
     headerSummaryElement.innerHTML = summaryHtml;
 }
 
