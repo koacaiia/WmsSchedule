@@ -710,22 +710,24 @@ function addTableRowClickListeners() {
     const tableBody = document.querySelector('#containerTable tbody');
     if (tableBody) {
         tableBody.addEventListener('click', function(event) {
+            // 6번째 셀 클릭 시 신규입고등록창 생성 방지
+            const cell = event.target.closest('td');
+            if (cell && cell.cellIndex === 5) {
+                // 6번째 셀(Bl) 클릭 시 아무 동작도 하지 않음 (UNIPASS 이동은 별도 핸들러)
+                return;
+            }
             // 클릭된 요소가 tbody 내의 tr인지 확인
             const clickedRow = event.target.closest('tr');
             if (clickedRow && clickedRow.parentNode === tableBody) {
                 console.log('테이블 행이 클릭되었습니다:', clickedRow);
-                
                 // 행의 data-record-key 추출 (Firebase 경로)
                 const recordKey = clickedRow.getAttribute('data-record-key');
                 currentModalRecordKey = recordKey;
                 console.log('📝 현재 modal record-key:', currentModalRecordKey);
-                
                 // 행 데이터 추출
                 const rowData = extractRowData(clickedRow);
-                
                 // 모달 열기
                 addNewArrival();
-                
                 // 데이터 채우기 (모달이 열린 후 약간의 지연)
                 setTimeout(() => {
                     populateModalWithData(rowData);
@@ -738,6 +740,64 @@ function addTableRowClickListeners() {
             }
         });
     }
+}
+
+// 6번째 셀(Bl) 클릭 시 새로운 창으로 UNIPASS 이동
+function setupSealCellAlert() {
+    const tableBody = document.querySelector('#containerTable tbody');
+    if (!tableBody) return;
+
+    tableBody.addEventListener('click', function(event) {
+        const cell = event.target.closest('td');
+        if (!cell || !tableBody.contains(cell)) return;
+
+        // 0-based index: 5번째 index가 6번째 셀(SEAL)
+        if (cell.cellIndex === 5) {
+            event.stopPropagation();
+            event.preventDefault();
+            const blValue = cell.textContent.trim();
+            // 클립보드 복사
+            if (navigator.clipboard) {
+                navigator.clipboard.writeText(blValue).then(() => {
+                    // 화주명(2번째 셀) 추출
+                    const row = cell.parentElement;
+                    let shipper = '';
+                    let blNum = blValue;
+                    if (row && row.cells) {
+                        if (row.cells.length > 2) shipper = row.cells[2].textContent.trim();
+                        if (row.cells.length > 5) blNum = row.cells[5].textContent.trim();
+                    }
+                    // confirm 창 표시
+                    const confirmMsg = `화주명: ${shipper}\nbl번호: ${blNum}(Copied)\n\n에 대한 수입화물 진행정보를 조회 합니다.`;
+                    if (window.confirm(confirmMsg)) {
+                        const url = `https://unipass.customs.go.kr/csp/index.do?cargMtNo=${encodeURIComponent(row.cells[5].textContent.trim())}`;
+                        const newWin = window.open(url, '_blank');
+                        if (newWin) {
+                            try { newWin.opener = null; } catch (e) {}
+                        }
+                    }
+                });
+            } else {
+                // fallback: 그냥 confirm만 띄움
+                const row = cell.parentElement;
+                let shipper = '';
+                let blNum = blValue;
+                if (row && row.cells) {
+                    if (row.cells.length > 2) shipper = row.cells[2].textContent.trim();
+                    if (row.cells.length > 5) blNum = row.cells[5].textContent.trim();
+                }
+                const confirmMsg = `화주명: ${shipper}\nbl번호: ${blNum}(Copied)\n\n에 대한 수입화물 진행정보를 조회 합니다.`;
+                if (window.confirm(confirmMsg)) {
+                    const url = `https://unipass.customs.go.kr/csp/index.do?cargMtNo=${encodeURIComponent(row.cells[5].textContent.trim())}`;
+                    const newWin = window.open(url, '_blank');
+                    if (newWin) {
+                        try { newWin.opener = null; } catch (e) {}
+                    }
+                }
+            }
+            return;
+        }
+    });
 }
 
 // 데이터베이스에서 기존 데이터 깊이 분석 함수 (최하위 노드까지)
@@ -4682,6 +4742,9 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // 테이블 행 클릭 이벤트 리스너 추가
     addTableRowClickListeners();
+
+    // SEAL(5번째 셀) 클릭 알림 리스너 추가
+    setupSealCellAlert();
     
     // 테이블 헤더 고정 강제 적용
     setTimeout(enforceFixedHeader, 100);
