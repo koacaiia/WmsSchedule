@@ -1,3 +1,15 @@
+/* Bl(6번째 셀) 하이퍼링크 스타일 */
+.bl-link {
+    color: #007bff;
+    text-decoration: underline;
+    cursor: pointer;
+    font-weight: bold;
+    transition: color 0.2s;
+}
+.bl-link:hover {
+    color: #0056b3;
+    text-decoration: underline;
+}
 /* 화인통상 물류 컨테이너 관리 시스템 스타일 */
 
 body {
@@ -418,8 +430,26 @@ tr:nth-child(even) {
 }
 
 tr:hover {
-    background-color: #e3f2fd;
+
+    background-color: #fff !important;
     cursor: pointer;
+}
+
+tbody tr {
+    /* 기본 배경색: 원래는 inherit, 보고서 모드에서는 회색 */
+    transition: background-color 0.2s;
+}
+
+.report-mode tbody tr {
+    background-color: #e0e0e0 !important;
+}
+
+.report-mode tbody tr.selected-row {
+    background-color: #fff !important;
+}
+
+tbody tr.selected-row {
+    background-color: #fff !important;
 }
 
 tbody tr:hover {

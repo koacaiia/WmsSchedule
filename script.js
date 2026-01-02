@@ -159,12 +159,15 @@ function updateSortHeaders(sortedColumn, direction) {
 
 // 신규입고 버튼 클릭 함수 (데이터 미리 채우기 지원)
 function addNewArrival(prefilledData = null) {
+    // 보고서 모드일 때 신규입고 등록창 열기 방지
+    if (window.reportModeActive) return;
+
     const modal = document.getElementById('newArrivalModal');
     modal.style.display = 'block';
-    
+
     // 삭제 버튼 기본적으로 보이게 설정
     const deleteBtn = document.getElementById('deleteArrivalBtn');
-    
+
     // 미리 채울 데이터가 없는 경우에만 현재 날짜 설정
     if (!prefilledData) {
         // 현재 날짜를 반입일 기본값으로 설정
@@ -174,18 +177,17 @@ function addNewArrival(prefilledData = null) {
             importDateElement.value = today;
         }
         // 새로운 입고 등록일 때는 record-key 초기화 (삭제 버튼 숨기기)
-       
         if (deleteBtn) {
             deleteBtn.style.display = 'none';
         }
     } else {
-         currentModalRecordKey = null;
+        currentModalRecordKey = null;
         // 기존 데이터 편집할 때는 삭제 버튼 표시
         if (deleteBtn) {
             deleteBtn.style.display = 'block';
         }
     }
-    
+
     // 화주명 select 옵션 채우기
     populateShipperSelect();
 }
@@ -1737,7 +1739,7 @@ function displayFilteredData(data, periodDescription) {
             <td>${shipper}</td>
             <td class="shipper-cell"><strong>${record.container || '-'}</strong></td>
             <td>${record.count || record.seal || '-'}</td>
-            <td>${record.bl || '-'}</td>
+            <td><span class="bl-link">${record.bl || '-'}</span></td>
             <td>${record.description || record.itemName || '-'}</td>
             <td>${record.qtyEa || '-'}</td>
             <td>${record.qtyPlt || '-'}</td>
@@ -4733,27 +4735,27 @@ async function loadNextWeekSummary() {
 // 페이지 로드 시 초기화
 document.addEventListener('DOMContentLoaded', function() {
     console.log('화인통상 물류 컨테이너 관리 시스템이 로드되었습니다.');
-    
+
     // 삭제 버튼 초기 상태 - 보이게 설정
     const deleteBtn = document.getElementById('deleteArrivalBtn');
     if (deleteBtn) {
         deleteBtn.style.display = 'block';
     }
-    
-    // 테이블 행 클릭 이벤트 리스너 추가
+
+    // 테이블 행 클릭 이벤트 리스너 추가 (다중 선택)
     addTableRowClickListeners();
 
     // SEAL(5번째 셀) 클릭 알림 리스너 추가
     setupSealCellAlert();
-    
+
     // 테이블 헤더 고정 강제 적용
     setTimeout(enforceFixedHeader, 100);
-    
+
     // 오늘 날짜를 기본값으로 설정
     const today = new Date().toISOString().split('T')[0];
     document.getElementById('startDate').value = today;
     document.getElementById('endDate').value = today;
-    
+
     // 시작일 변경 시 종료일도 동일하게 설정
     const startDateInput = document.getElementById('startDate');
     const endDateInput = document.getElementById('endDate');
@@ -4763,10 +4765,10 @@ document.addEventListener('DOMContentLoaded', function() {
             console.log(`📅 시작일 변경 → 종료일 자동 설정: ${this.value}`);
         });
     }
-    
+
     // Firebase에서 InCargo 데이터 자동 로드 후 오늘 필터 적용
     loadInCargoDataOnPageLoad();
-    
+
     // 주간요약 탭 1초 이상 클릭 유지 시 이벤트
     const summaryTabBtn = document.querySelector('[data-tab="summary"]');
     console.log('🟣 주간요약 탭 버튼 찾기 시도:', summaryTabBtn !== null ? '성공' : '실패');
@@ -4775,7 +4777,7 @@ document.addEventListener('DOMContentLoaded', function() {
         let longPressTimer = null;
         // 전역 변수로 변경 (switchMainTab에서 체크하기 위해)
         window.isLongPressingTab = false;
-        
+
         summaryTabBtn.addEventListener('mousedown', function(e) {
             console.log('🟣🟣🟣 마우스 다운 이벤트 발생! 🟣🟣🟣');
             window.isLongPressingTab = false;
@@ -4786,13 +4788,13 @@ document.addEventListener('DOMContentLoaded', function() {
                 loadNextWeekSummary();
             }, 1000); // 1초
         });
-        
+
         summaryTabBtn.addEventListener('mouseup', function(e) {
             console.log('🟣 마우스 업 이벤트 발생, isLongPressingTab:', window.isLongPressingTab);
             if (longPressTimer) {
                 clearTimeout(longPressTimer);
             }
-            
+
             // Long press였다면 이벤트 전파 막기 (HTML onclick은 막을 수 없으므로 switchMainTab에서 체크)
             if (window.isLongPressingTab) {
                 console.log('🟣 Long press 감지 - HTML onclick은 실행되지만 switchMainTab에서 차단됨');
@@ -4806,28 +4808,28 @@ document.addEventListener('DOMContentLoaded', function() {
                 }, 500);
                 return false;
             }
-            
+
             // 일반 클릭 처리 (1초 미만)
             console.log('🟣 일반 클릭 (1초 미만) - 기존 탭 전환 허용');
         });
-        
+
         summaryTabBtn.addEventListener('mouseleave', function(e) {
             console.log('🟣 마우스 이탈 이벤트 발생');
             if (longPressTimer) {
                 clearTimeout(longPressTimer);
             }
         });
-        
+
         console.log('✅ 주간요약 탭 장시간 클릭 이벤트 리스너 추가됨');
     } else {
         console.error('❌ 주간요약 탭 버튼을 찾을 수 없습니다!');
     }
-    
+
     // 화주명 toggle button 이벤트 리스너 추가
     const shipperToggleBtn = document.getElementById('shipperToggleBtn');
     const shipperSelect = document.getElementById('shipper');
     const shipperInput = document.getElementById('shipperInput');
-    
+
     if (shipperToggleBtn && shipperSelect && shipperInput) {
         shipperToggleBtn.addEventListener('click', function() {
             if (shipperSelect.style.display !== 'none') {
@@ -4847,6 +4849,92 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     }
+
+    // 보고서 생성 버튼 토글 모드 구현
+    const reportBtn = document.getElementById('reportBtn');
+    window.reportModeActive = false;
+    if (reportBtn) {
+        reportBtn.addEventListener('click', function() {
+            window.reportModeActive = !window.reportModeActive;
+            const container = document.querySelector('.container');
+            const tableBody = document.querySelector('#containerTable tbody');
+            if (window.reportModeActive) {
+                // 보고서 모드 ON: 회색, 다중선택, 클릭시 하얀색
+                container.classList.add('report-mode');
+                if (tableBody) {
+                    tableBody.addEventListener('click', reportRowSelectHandler);
+                }
+                // 신규입고 버튼 비활성화
+                const newBtn = document.querySelector('.control-btn[onclick*="addNewArrival"]');
+                if (newBtn) newBtn.disabled = true;
+            } else {
+                // 보고서 모드 OFF: 원상태 복귀
+                container.classList.remove('report-mode');
+                if (tableBody) {
+                    tableBody.removeEventListener('click', reportRowSelectHandler);
+                    // 선택 해제
+                    tableBody.querySelectorAll('tr.selected-row').forEach(r => r.classList.remove('selected-row'));
+                }
+                // 신규입고 버튼 활성화
+                const newBtn = document.querySelector('.control-btn[onclick*="addNewArrival"]');
+                if (newBtn) newBtn.disabled = false;
+            }
+        });
+    }
+
+    // 보고서 모드에서만 동작하는 row 선택 핸들러
+    function reportRowSelectHandler(event) {
+        const row = event.target.closest('tr');
+        if (!row) return;
+        if (event.ctrlKey || event.metaKey) {
+            row.classList.toggle('selected-row');
+        } else {
+            // 단일 선택: 나머지 해제, 클릭한 것만 선택
+            const tableBody = row.parentNode;
+            tableBody.querySelectorAll('tr').forEach(r => r.classList.remove('selected-row'));
+            row.classList.add('selected-row');
+        }
+    }
+
+    // 신규입고 등록창 열기 방지 (보고서 모드일 때)
+    const newBtn = document.querySelector('.control-btn[onclick*="addNewArrival"]');
+    if (newBtn) {
+        newBtn.addEventListener('click', function(e) {
+            if (window.reportModeActive) {
+                e.preventDefault();
+                e.stopPropagation();
+                return false;
+            }
+        }, true);
+    }
+
+    // 테이블 행 클릭 시 신규입고 등록창 방지 (보고서 모드일 때)
+    const origAddTableRowClickListeners = addTableRowClickListeners;
+    window.addTableRowClickListeners = function() {
+        const tableBody = document.querySelector('#containerTable tbody');
+        if (tableBody) {
+            tableBody.addEventListener('click', function(event) {
+                if (reportModeActive) return; // 보고서 모드면 무시
+                // 기존 행 클릭 동작
+                const cell = event.target.closest('td');
+                if (cell && cell.cellIndex === 5) return;
+                const clickedRow = event.target.closest('tr');
+                if (clickedRow && clickedRow.parentNode === tableBody) {
+                    const recordKey = clickedRow.getAttribute('data-record-key');
+                    currentModalRecordKey = recordKey;
+                    const rowData = extractRowData(clickedRow);
+                    addNewArrival();
+                    setTimeout(() => {
+                        populateModalWithData(rowData);
+                        const deleteBtn = document.getElementById('deleteArrivalBtn');
+                        if (deleteBtn && currentModalRecordKey) {
+                            deleteBtn.style.display = 'block';
+                        }
+                    }, 100);
+                }
+            });
+        }
+    };
 });
 
 // 삭제 버튼 클릭 핸들러 - Firebase에서 데이터 삭제
