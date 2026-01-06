@@ -59,77 +59,6 @@ let currentSortDirection = 'asc'; // 'asc' or 'desc'
 function sortTable(columnIndex) {
     const table = document.getElementById('containerTable');
     const tbody = table.querySelector('tbody');
-    const rows = Array.from(tbody.rows);
-    
-    // 데이터가 없으면 정렬하지 않음
-    if (rows.length === 0) {
-        return;
-    }
-    
-    // 정렬 방향 결정
-    let sortDirection = 'asc';
-    if (currentSortColumn === columnIndex && currentSortDirection === 'asc') {
-        sortDirection = 'desc';
-    }
-    
-    // 정렬 상태 업데이트
-    currentSortColumn = columnIndex;
-    currentSortDirection = sortDirection;
-    
-    console.log(`📊 컬럼 ${columnIndex} ${sortDirection} 정렬 시작...`);
-    
-    // 컬럼별 정렬 타입 결정
-    const isDateColumn = columnIndex === 1; // 반입일
-    const isNumericColumn = columnIndex === 0; // 순번
-    
-    rows.sort((a, b) => {
-        let aVal = a.cells[columnIndex].textContent.trim();
-        let bVal = b.cells[columnIndex].textContent.trim();
-        
-        // HTML 태그 제거 (굵게 표시된 텍스트 등)
-        aVal = aVal.replace(/<[^>]*>/g, '').trim();
-        bVal = bVal.replace(/<[^>]*>/g, '').trim();
-        
-        let comparison = 0;
-        
-        if (isDateColumn) {
-            // 날짜 정렬
-            const dateA = new Date(aVal);
-            const dateB = new Date(bVal);
-            
-            if (isNaN(dateA.getTime()) && isNaN(dateB.getTime())) {
-                comparison = aVal.localeCompare(bVal);
-            } else if (isNaN(dateA.getTime())) {
-                comparison = 1; // aVal을 뒤로
-            } else if (isNaN(dateB.getTime())) {
-                comparison = -1; // bVal을 뒤로
-            } else {
-                comparison = dateA - dateB;
-            }
-        } else if (isNumericColumn) {
-            // 숫자 정렬
-            const numA = parseFloat(aVal) || 0;
-            const numB = parseFloat(bVal) || 0;
-            comparison = numA - numB;
-        } else {
-            // 텍스트 정렬 (한글 및 영문 지원)
-            comparison = aVal.localeCompare(bVal, 'ko-KR');
-        }
-        
-        // 정렬 방향에 따라 결과 조정
-        return sortDirection === 'asc' ? comparison : -comparison;
-    });
-    
-    // 정렬된 순서대로 순번 다시 매기기
-    rows.forEach((row, index) => {
-        row.cells[0].textContent = index + 1;
-    });
-    
-    // 테이블 업데이트
-    tbody.innerHTML = '';
-    rows.forEach(row => tbody.appendChild(row));
-    
-    // 헤더 정렬 표시 업데이트
     updateSortHeaders(columnIndex, sortDirection);
     
     console.log(`✅ 정렬 완료: ${rows.length}개 행이 ${sortDirection} 순으로 정렬됨`);
@@ -157,141 +86,30 @@ function updateSortHeaders(sortedColumn, direction) {
     }
 }
 
-// 신규입고 버튼 클릭 함수 (데이터 미리 채우기 지원)
-function addNewArrival(prefilledData = null) {
-    // 보고서 모드일 때 신규입고 등록창 열기 방지
-    if (window.reportModeActive) return;
-
-    const modal = document.getElementById('newArrivalModal');
-    modal.style.display = 'block';
-
-    // 삭제 버튼 기본적으로 보이게 설정
-    const deleteBtn = document.getElementById('deleteArrivalBtn');
-
-    // 미리 채울 데이터가 없는 경우에만 현재 날짜 설정
-    if (!prefilledData) {
-        // 현재 날짜를 반입일 기본값으로 설정
-        const today = new Date().toISOString().split('T')[0];
-        const importDateElement = document.getElementById('importDate');
-        if (importDateElement) {
-            importDateElement.value = today;
-        }
-        // 새로운 입고 등록일 때는 record-key 초기화 (삭제 버튼 숨기기)
-        if (deleteBtn) {
-            deleteBtn.style.display = 'none';
-        }
-    } else {
-        currentModalRecordKey = null;
-        // 기존 데이터 편집할 때는 삭제 버튼 표시
-        if (deleteBtn) {
-            deleteBtn.style.display = 'block';
-        }
-    }
-
-    // 화주명 select 옵션 채우기
-    populateShipperSelect();
-}
-
-// 모달 닫기 함수
-function closeModal() {
-    const modal = document.getElementById('newArrivalModal');
-    modal.style.display = 'none';
-    
-    // 폼 초기화
-    const form = document.getElementById('newArrivalForm');
-    if (form) {
-        form.reset();
-    }
-    
-    // 화주명 select/input 초기화
-    const shipperSelect = document.getElementById('shipper');
-    const shipperInput = document.getElementById('shipperInput');
-    if (shipperSelect && shipperInput) {
-        shipperSelect.style.display = 'block';
-        shipperInput.style.display = 'none';
-        shipperSelect.value = '';
-        shipperInput.value = '';
-    }
-    
-    // 현재 record-key 초기화 및 삭제 버튼 숨기기
-    currentModalRecordKey = null;
-    const deleteBtn = document.getElementById('deleteArrivalBtn');
-    if (deleteBtn) {
-        deleteBtn.style.display = 'none';
-    }
-}
-
-// 화주명 select 옵션 채우기
-function populateShipperSelect() {
-    const shipperSelect = document.getElementById('shipper');
-    if (!shipperSelect) return;
-    
-    // 기존 데이터에서 화주명 추출
-    const shippers = new Set();
-    allInCargoData.forEach(item => {
-        const shipper = item.data.consignee || item.data.shipper;
-        if (shipper && shipper.trim()) {
-            shippers.add(shipper.trim());
-        }
-    });
-    
-    // 기존 옵션 제거 (기본 옵션 제외)
-    while (shipperSelect.options.length > 2) {
-        shipperSelect.remove(2);
-    }
-    
-    // 화주명 옵션 추가 (알파벳순 정렬)
-    Array.from(shippers).sort().forEach(shipper => {
-        const option = document.createElement('option');
-        option.value = shipper;
-        option.textContent = shipper;
-        shipperSelect.insertBefore(option, shipperSelect.querySelector('option[value="__custom__"]'));
-    });
-    
-    console.log(`📋 화주명 select 옵션 업데이트: ${shippers.size}개`);
-}
-
-// 폼 데이터를 객체로 변환하는 함수
+// 신규 입고 폼 데이터를 컨테이너 객체로 변환
 function createContainerObject(formData) {
-    const year = formData.get('importDate').split('-')[0];
-    const month = formData.get('importDate').split('-')[1];
-    const day = formData.get('importDate').split('-')[2];
-    const date = year + '-' + (month.length === 1 ? '0' + month : month) + '-' + (day.length === 1 ? '0' + day : day);
-    console.log('Formatted date:', date);
-    
-    // 화주명 가져오기 (select 또는 input)
-    const shipperSelect = document.getElementById('shipper');
-    const shipperInput = document.getElementById('shipperInput');
-    let shipperValue = '';
-    
-    if (shipperSelect.style.display !== 'none') {
-        shipperValue = formData.get('shipper');
-    } else {
-        shipperValue = formData.get('shipperInput');
-    }
-    console.log('Consignee (shipper) value:', shipperValue);
-    console.log('Container number value:', formData);
+    const shipper = formData.get('shipper') || formData.get('shipperInput') || '';
+    const specRaw = formData.get('spec') || '';
     const containerObject = {
         // 기본 정보
-        date: date,     
-        consignee: shipperValue||"",
+        date: formData.get('importDate'),
+        consignee: shipper,
         container: formData.get('container'),
         count: formData.get('seal') || '',
         bl: formData.get('bl'),
-        
+
         // 화물 정보
         description: formData.get('itemName'),
-        qtyEa: parseInt(formData.get('qtyEa')) || 0,
-        qtyPlt: parseInt(formData.get('qtyPlt')) || 0,
-        spec: formData.get('spec') || '',
+        qtyEa: parseInt(formData.get('qtyEa'), 10) || 0,
+        qtyPlt: parseInt(formData.get('qtyPlt'), 10) || 0,
+        spec: specRaw.toUpperCase(),
         shape: formData.get('shape') || '',
         remark: formData.get('remark') || '',
-        
+
         // 시스템 정보
-        working: "", // 입고대기
-        
+        working: '',
+        structureVersion: '3.0'
     };
-    
     return containerObject;
 }
 
@@ -488,10 +306,89 @@ function checkDuplicateContainer(containerNumber) {
     });
 }
 
-// 신규입고 등록 함수
 async function submitNewArrival() {
     const form = document.getElementById('newArrivalForm');
     const formData = new FormData(form);
+    window.exportSelectedRowsReport = function exportSelectedRowsReport() {
+        const reportType = document.getElementById('reportTypeSelect')?.value || 'excel';
+        const tableBody = document.querySelector('#containerTable tbody');
+        if (!tableBody) return;
+        const selectedRows = Array.from(tableBody.querySelectorAll('tr.selected-row'));
+        if (selectedRows.length === 0) {
+            alert('선택된 행이 없습니다.');
+            return;
+        }
+        const firstRow = selectedRows[0];
+        const firstCells = firstRow.cells;
+        
+        // 보고서 생성 확인창
+        const blNo = firstCells[5]?.textContent.trim() || '(없음)';
+        const itemName = firstCells[6]?.textContent.trim() || '(알 수 없음)';
+        const shipper = firstCells[2]?.textContent.trim() || '(알 수 없음)';
+        
+        // 토스트 메시지로 알림 표시
+        const toastMessage = `📊 ${shipper} 보고서 생성 중...`;
+        showToast(toastMessage, 5000);
+        const fileNameParts = [
+            firstCells[0]?.textContent.trim() || '',
+            firstCells[1]?.textContent.trim() || '',
+            firstCells[4]?.textContent.trim() || '',
+            firstCells[5]?.textContent.trim() || ''
+        ];
+        let fileName = fileNameParts.map(v => v.replace(/[/\\:*?\[\]"<>|]/g, '_')).join('_');
+        if (reportType === 'excel') fileName += '.xlsx';
+        else fileName += '.txt';
+
+        if (reportType === 'excel') {
+            if (typeof XLSX === 'undefined') {
+                alert('SheetJS 라이브러리가 필요합니다.');
+                return;
+            }
+            const ws_data = Array.from({length: 20}, () => []);
+            ws_data[1][2] = firstCells[4]?.textContent.trim() || '';
+            ws_data[2][3] = firstCells[5]?.textContent.trim() || '';
+            selectedRows.forEach((row, i) => {
+                const cells = row.cells;
+                const r = 8 + i;
+                ws_data[r][1] = cells[2]?.textContent.trim() || '';
+                ws_data[r][2] = cells[3]?.textContent.trim() || '';
+                ws_data[r][3] = cells[0]?.textContent.trim() || '';
+                ws_data[r][4] = cells[6]?.textContent.trim() || '';
+            });
+            const ws = XLSX.utils.aoa_to_sheet(ws_data);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'report');
+            XLSX.writeFile(wb, fileName);
+        } else {
+            // TXT 보고서: 각 행을 탭 구분 텍스트로 저장
+            let txt = '';
+            selectedRows.forEach((row, i) => {
+                const cells = row.cells;
+                txt += [
+                    cells[0]?.textContent.trim() || '',
+                    cells[1]?.textContent.trim() || '',
+                    cells[2]?.textContent.trim() || '',
+                    cells[3]?.textContent.trim() || '',
+                    cells[4]?.textContent.trim() || '',
+                    cells[5]?.textContent.trim() || '',
+                    cells[6]?.textContent.trim() || '',
+                    cells[7]?.textContent.trim() || '',
+                    cells[8]?.textContent.trim() || '',
+                    cells[9]?.textContent.trim() || '',
+                    cells[10]?.textContent.trim() || '',
+                    cells[11]?.textContent.trim() || ''
+                ].join('\t') + '\n';
+            });
+            const blob = new Blob([txt], {type: 'text/plain;charset=utf-8'});
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(a.href);
+        }
+    }
     
     // 화주명 검증 (select 또는 input)
     const shipperSelect = document.getElementById('shipper');
@@ -714,8 +611,8 @@ function addTableRowClickListeners() {
         tableBody.addEventListener('click', function(event) {
             // 6번째 셀 클릭 시 신규입고등록창 생성 방지
             const cell = event.target.closest('td');
-            if (cell && cell.cellIndex === 5) {
-                // 6번째 셀(Bl) 클릭 시 아무 동작도 하지 않음 (UNIPASS 이동은 별도 핸들러)
+            if (cell && (cell.cellIndex === 0 || cell.cellIndex === 5)) {
+                // 첫 번째 셀(선택/순번) 또는 6번째 셀(Bl) 클릭 시 아무 동작도 하지 않음
                 return;
             }
             // 클릭된 요소가 tbody 내의 tr인지 확인
@@ -728,20 +625,120 @@ function addTableRowClickListeners() {
                 console.log('📝 현재 modal record-key:', currentModalRecordKey);
                 // 행 데이터 추출
                 const rowData = extractRowData(clickedRow);
-                // 모달 열기
-                addNewArrival();
-                // 데이터 채우기 (모달이 열린 후 약간의 지연)
-                setTimeout(() => {
-                    populateModalWithData(rowData);
-                    // 삭제 버튼 표시 (record-key가 있을 때만)
-                    const deleteBtn = document.getElementById('deleteArrivalBtn');
-                    if (deleteBtn && currentModalRecordKey) {
-                        deleteBtn.style.display = 'block';
-                    }
-                }, 100);
+                // 행 선택 액션 다이얼로그 표시
+                showRowActionDialog(clickedRow, rowData);
             }
         });
     }
+}
+
+// 행 클릭 시 액션 선택 다이얼로그
+function showRowActionDialog(clickedRow, rowData) {
+    // 기존 다이얼로그 제거
+    const existing = document.getElementById('rowActionDialog');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'rowActionDialog';
+    overlay.style.position = 'fixed';
+    overlay.style.top = '0';
+    overlay.style.left = '0';
+    overlay.style.width = '100vw';
+    overlay.style.height = '100vh';
+    overlay.style.backgroundColor = 'rgba(0,0,0,0.35)';
+    overlay.style.zIndex = '3000';
+    overlay.style.display = 'flex';
+    overlay.style.alignItems = 'center';
+    overlay.style.justifyContent = 'center';
+
+    const box = document.createElement('div');
+    box.style.background = '#fff';
+    box.style.borderRadius = '8px';
+    box.style.boxShadow = '0 8px 24px rgba(0,0,0,0.25)';
+    box.style.minWidth = '260px';
+    box.style.padding = '16px';
+    box.style.display = 'flex';
+    box.style.flexDirection = 'column';
+    box.style.gap = '10px';
+
+    const title = document.createElement('div');
+    title.textContent = '행 작업 선택';
+    title.style.fontWeight = 'bold';
+    title.style.fontSize = '14px';
+    box.appendChild(title);
+
+    const info = document.createElement('div');
+    info.textContent = `${rowData?.container || ''} / ${rowData?.itemName || ''}`;
+    info.style.fontSize = '12px';
+    info.style.color = '#555';
+    box.appendChild(info);
+
+    const btnWrap = document.createElement('div');
+    btnWrap.style.display = 'flex';
+    btnWrap.style.gap = '8px';
+    btnWrap.style.justifyContent = 'space-between';
+
+    const reportBtn = document.createElement('button');
+    reportBtn.textContent = '보고서 생성';
+    reportBtn.style.flex = '1';
+    reportBtn.style.padding = '8px';
+    reportBtn.style.background = '#007bff';
+    reportBtn.style.color = 'white';
+    reportBtn.style.border = 'none';
+    reportBtn.style.borderRadius = '4px';
+    reportBtn.style.cursor = 'pointer';
+    reportBtn.onclick = () => {
+        // 선택 상태를 현재 행으로 설정 후 보고서 생성
+        const tbody = clickedRow.parentNode;
+        if (tbody) {
+            tbody.querySelectorAll('tr').forEach(r => r.classList.remove('selected-row'));
+        }
+        clickedRow.classList.add('selected-row');
+        if (typeof window.exportSelectedRowsReport === 'function') {
+            window.exportSelectedRowsReport();
+        }
+        overlay.remove();
+    };
+
+    const editBtn = document.createElement('button');
+    editBtn.textContent = '목록 수정';
+    editBtn.style.flex = '1';
+    editBtn.style.padding = '8px';
+    editBtn.style.background = '#28a745';
+    editBtn.style.color = 'white';
+    editBtn.style.border = 'none';
+    editBtn.style.borderRadius = '4px';
+    editBtn.style.cursor = 'pointer';
+    editBtn.onclick = () => {
+        addNewArrival();
+        setTimeout(() => {
+            populateModalWithData(rowData);
+            const deleteBtn = document.getElementById('deleteArrivalBtn');
+            if (deleteBtn && currentModalRecordKey) {
+                deleteBtn.style.display = 'block';
+            }
+        }, 100);
+        overlay.remove();
+    };
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.textContent = '취소';
+    cancelBtn.style.flex = '1';
+    cancelBtn.style.padding = '8px';
+    cancelBtn.style.background = '#6c757d';
+    cancelBtn.style.color = 'white';
+    cancelBtn.style.border = 'none';
+    cancelBtn.style.borderRadius = '4px';
+    cancelBtn.style.cursor = 'pointer';
+    cancelBtn.onclick = () => overlay.remove();
+
+    btnWrap.appendChild(reportBtn);
+    btnWrap.appendChild(editBtn);
+    btnWrap.appendChild(cancelBtn);
+    box.appendChild(btnWrap);
+
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
 }
 
 // 6번째 셀(Bl) 클릭 시 새로운 창으로 UNIPASS 이동
@@ -1448,6 +1445,74 @@ let filteredData = []; // 필터링된 데이터를 저장하는 배열
 let draggedItem = null;
 let draggedItemData = null;
 let currentModalRecordKey = null; // 현재 modal에 열려있는 record의 Firebase 경로
+
+// 신규입고 모달 열기
+function addNewArrival() {
+    const modal = document.getElementById('newArrivalModal');
+    const form = document.getElementById('newArrivalForm');
+    const shipperSelect = document.getElementById('shipper');
+    const shipperInput = document.getElementById('shipperInput');
+    const shipperToggleBtn = document.getElementById('shipperToggleBtn');
+    const deleteBtn = document.getElementById('deleteArrivalBtn');
+
+    currentModalRecordKey = null;
+
+    if (form) {
+        form.reset();
+    }
+
+    // 기본 화주 입력 모드는 select
+    if (shipperSelect) {
+        shipperSelect.style.display = 'block';
+        shipperSelect.value = '';
+    }
+    if (shipperInput) {
+        shipperInput.style.display = 'none';
+        shipperInput.value = '';
+    }
+    if (shipperToggleBtn) {
+        shipperToggleBtn.textContent = '화주명 *';
+    }
+    if (deleteBtn) {
+        deleteBtn.style.display = 'none';
+    }
+    if (modal) {
+        modal.style.display = 'block';
+    }
+}
+
+// 신규입고 모달 닫기 및 초기화
+function closeModal() {
+    const modal = document.getElementById('newArrivalModal');
+    const form = document.getElementById('newArrivalForm');
+    const shipperSelect = document.getElementById('shipper');
+    const shipperInput = document.getElementById('shipperInput');
+    const shipperToggleBtn = document.getElementById('shipperToggleBtn');
+    const deleteBtn = document.getElementById('deleteArrivalBtn');
+
+    currentModalRecordKey = null;
+
+    if (form) {
+        form.reset();
+    }
+    if (shipperSelect) {
+        shipperSelect.style.display = 'block';
+        shipperSelect.value = '';
+    }
+    if (shipperInput) {
+        shipperInput.style.display = 'none';
+        shipperInput.value = '';
+    }
+    if (shipperToggleBtn) {
+        shipperToggleBtn.textContent = '화주명 *';
+    }
+    if (deleteBtn) {
+        deleteBtn.style.display = 'none';
+    }
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
 
 // 날짜 범위 계산 함수
 function getDateRange(period) {
@@ -4732,7 +4797,6 @@ async function loadNextWeekSummary() {
     }
 }
 
-// 페이지 로드 시 초기화
 document.addEventListener('DOMContentLoaded', function() {
     console.log('화인통상 물류 컨테이너 관리 시스템이 로드되었습니다.');
 
@@ -4850,91 +4914,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // 보고서 생성 버튼 토글 모드 구현
-    const reportBtn = document.getElementById('reportBtn');
-    window.reportModeActive = false;
-    if (reportBtn) {
-        reportBtn.addEventListener('click', function() {
-            window.reportModeActive = !window.reportModeActive;
-            const container = document.querySelector('.container');
-            const tableBody = document.querySelector('#containerTable tbody');
-            if (window.reportModeActive) {
-                // 보고서 모드 ON: 회색, 다중선택, 클릭시 하얀색
-                container.classList.add('report-mode');
-                if (tableBody) {
-                    tableBody.addEventListener('click', reportRowSelectHandler);
-                }
-                // 신규입고 버튼 비활성화
-                const newBtn = document.querySelector('.control-btn[onclick*="addNewArrival"]');
-                if (newBtn) newBtn.disabled = true;
-            } else {
-                // 보고서 모드 OFF: 원상태 복귀
-                container.classList.remove('report-mode');
-                if (tableBody) {
-                    tableBody.removeEventListener('click', reportRowSelectHandler);
-                    // 선택 해제
-                    tableBody.querySelectorAll('tr.selected-row').forEach(r => r.classList.remove('selected-row'));
-                }
-                // 신규입고 버튼 활성화
-                const newBtn = document.querySelector('.control-btn[onclick*="addNewArrival"]');
-                if (newBtn) newBtn.disabled = false;
-            }
-        });
-    }
 
-    // 보고서 모드에서만 동작하는 row 선택 핸들러
-    function reportRowSelectHandler(event) {
-        const row = event.target.closest('tr');
-        if (!row) return;
-        if (event.ctrlKey || event.metaKey) {
-            row.classList.toggle('selected-row');
-        } else {
-            // 단일 선택: 나머지 해제, 클릭한 것만 선택
-            const tableBody = row.parentNode;
-            tableBody.querySelectorAll('tr').forEach(r => r.classList.remove('selected-row'));
-            row.classList.add('selected-row');
-        }
-    }
-
-    // 신규입고 등록창 열기 방지 (보고서 모드일 때)
-    const newBtn = document.querySelector('.control-btn[onclick*="addNewArrival"]');
-    if (newBtn) {
-        newBtn.addEventListener('click', function(e) {
-            if (window.reportModeActive) {
-                e.preventDefault();
-                e.stopPropagation();
-                return false;
-            }
-        }, true);
-    }
-
-    // 테이블 행 클릭 시 신규입고 등록창 방지 (보고서 모드일 때)
-    const origAddTableRowClickListeners = addTableRowClickListeners;
-    window.addTableRowClickListeners = function() {
-        const tableBody = document.querySelector('#containerTable tbody');
-        if (tableBody) {
-            tableBody.addEventListener('click', function(event) {
-                if (reportModeActive) return; // 보고서 모드면 무시
-                // 기존 행 클릭 동작
-                const cell = event.target.closest('td');
-                if (cell && cell.cellIndex === 5) return;
-                const clickedRow = event.target.closest('tr');
-                if (clickedRow && clickedRow.parentNode === tableBody) {
-                    const recordKey = clickedRow.getAttribute('data-record-key');
-                    currentModalRecordKey = recordKey;
-                    const rowData = extractRowData(clickedRow);
-                    addNewArrival();
-                    setTimeout(() => {
-                        populateModalWithData(rowData);
-                        const deleteBtn = document.getElementById('deleteArrivalBtn');
-                        if (deleteBtn && currentModalRecordKey) {
-                            deleteBtn.style.display = 'block';
-                        }
-                    }, 100);
-                }
-            });
-        }
-    };
 });
 
 // 삭제 버튼 클릭 핸들러 - Firebase에서 데이터 삭제
@@ -5617,3 +5597,82 @@ async function restructureDatabaseByConsignee() {
         alert(`DB 재구성 중 오류가 발생했습니다:\n${error.message}`);
     }
 }
+
+// 선택된 행을 report.xlsx 포맷으로 내보내기 (요청 사양)
+async function exportSelectedRowsReport() {
+    const tableBody = document.querySelector('#containerTable tbody');
+    if (!tableBody) {
+        return;
+    }
+
+    const selectedRows = Array.from(tableBody.querySelectorAll('tr.selected-row'));
+    if (selectedRows.length === 0) {
+        return;
+    }
+
+    const getCell = (row, idx) => (row.cells[idx]?.textContent || '').trim();
+    const sanitize = (text) => (text || '').replace(/[<>:"/\\|?*\[\]]/g, '_').trim();
+
+    const firstRow = selectedRows[0];
+    const firstDate = getCell(firstRow, 1);
+    const firstBl = getCell(firstRow, 5);
+    const firstItemName = getCell(firstRow, 6);
+    const firstContainer = getCell(firstRow, 3);
+
+    const fileName = `${sanitize(firstDate)}_${sanitize(firstBl)}_${sanitize(firstItemName)}_${sanitize(firstContainer)}.xlsx` || 'report.xlsx';
+
+    try {
+        console.log('🔍 Report.xlsx 템플릿 로드 시도...');
+        
+        // report.xlsx 로드
+        const response = await fetch('report.xlsx');
+        if (!response.ok) {
+            throw new Error(`템플릿 로드 실패 (HTTP ${response.status})`);
+        }
+        
+        const buffer = await response.arrayBuffer();
+        console.log(`📦 버퍼 크기: ${buffer.byteLength} bytes`);
+        
+        // xlsx 파일을 Blob으로 생성하여 다운로드
+        // SheetJS는 스타일 보존이 완벽하지 않으므로, 원본 바이너리를 수정하는 방식 사용
+        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        
+        // 다운로드할 원본 Excel 파일 (모든 스타일 유지)
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(link.href);
+        
+        console.log(`✅ 파일 다운로드 완료: ${fileName}`);
+        return;
+        
+    } catch (err) {
+        console.error('❌ 오류:', err);
+    }
+
+    // 템플릿 로드 실패 시 기본 시트 생성
+    const wsData = [];
+    wsData[1] = wsData[1] || [];
+    wsData[1][2] = firstBl;
+    wsData[2] = wsData[2] || [];
+    wsData[2][3] = firstItemName;
+    dataRows.forEach((rowData, idx) => {
+        wsData[startRow - 1 + idx] = wsData[startRow - 1 + idx] || [];
+        wsData[startRow - 1 + idx][1] = rowData[0];
+        wsData[startRow - 1 + idx][2] = rowData[1];
+        wsData[startRow - 1 + idx][3] = rowData[2];
+        wsData[startRow - 1 + idx][4] = rowData[3];
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'report');
+    XLSX.writeFile(wb, fileName);
+    showToast(`✅ 보고서가 생성되었습니다! 파일명: ${fileName}`, 5000);
+}
+
+// 전역에서 사용할 수 있도록 노출
+window.exportSelectedRowsReport = exportSelectedRowsReport;
