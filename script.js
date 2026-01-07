@@ -309,86 +309,8 @@ function checkDuplicateContainer(containerNumber) {
 async function submitNewArrival() {
     const form = document.getElementById('newArrivalForm');
     const formData = new FormData(form);
-    window.exportSelectedRowsReport = function exportSelectedRowsReport() {
-        const reportType = document.getElementById('reportTypeSelect')?.value || 'excel';
-        const tableBody = document.querySelector('#containerTable tbody');
-        if (!tableBody) return;
-        const selectedRows = Array.from(tableBody.querySelectorAll('tr.selected-row'));
-        if (selectedRows.length === 0) {
-            alert('선택된 행이 없습니다.');
-            return;
-        }
-        const firstRow = selectedRows[0];
-        const firstCells = firstRow.cells;
-        
-        // 보고서 생성 확인창
-        const blNo = firstCells[5]?.textContent.trim() || '(없음)';
-        const itemName = firstCells[6]?.textContent.trim() || '(알 수 없음)';
-        const shipper = firstCells[2]?.textContent.trim() || '(알 수 없음)';
-        
-        // 토스트 메시지로 알림 표시
-        const toastMessage = `📊 ${shipper} 보고서 생성 중...`;
-        showToast(toastMessage, 5000);
-        const fileNameParts = [
-            firstCells[0]?.textContent.trim() || '',
-            firstCells[1]?.textContent.trim() || '',
-            firstCells[4]?.textContent.trim() || '',
-            firstCells[5]?.textContent.trim() || ''
-        ];
-        let fileName = fileNameParts.map(v => v.replace(/[/\\:*?\[\]"<>|]/g, '_')).join('_');
-        if (reportType === 'excel') fileName += '.xlsx';
-        else fileName += '.txt';
-
-        if (reportType === 'excel') {
-            if (typeof XLSX === 'undefined') {
-                alert('SheetJS 라이브러리가 필요합니다.');
-                return;
-            }
-            const ws_data = Array.from({length: 20}, () => []);
-            ws_data[1][2] = firstCells[4]?.textContent.trim() || '';
-            ws_data[2][3] = firstCells[5]?.textContent.trim() || '';
-            selectedRows.forEach((row, i) => {
-                const cells = row.cells;
-                const r = 8 + i;
-                ws_data[r][1] = cells[2]?.textContent.trim() || '';
-                ws_data[r][2] = cells[3]?.textContent.trim() || '';
-                ws_data[r][3] = cells[0]?.textContent.trim() || '';
-                ws_data[r][4] = cells[6]?.textContent.trim() || '';
-            });
-            const ws = XLSX.utils.aoa_to_sheet(ws_data);
-            const wb = XLSX.utils.book_new();
-            XLSX.utils.book_append_sheet(wb, ws, 'report');
-            XLSX.writeFile(wb, fileName);
-        } else {
-            // TXT 보고서: 각 행을 탭 구분 텍스트로 저장
-            let txt = '';
-            selectedRows.forEach((row, i) => {
-                const cells = row.cells;
-                txt += [
-                    cells[0]?.textContent.trim() || '',
-                    cells[1]?.textContent.trim() || '',
-                    cells[2]?.textContent.trim() || '',
-                    cells[3]?.textContent.trim() || '',
-                    cells[4]?.textContent.trim() || '',
-                    cells[5]?.textContent.trim() || '',
-                    cells[6]?.textContent.trim() || '',
-                    cells[7]?.textContent.trim() || '',
-                    cells[8]?.textContent.trim() || '',
-                    cells[9]?.textContent.trim() || '',
-                    cells[10]?.textContent.trim() || '',
-                    cells[11]?.textContent.trim() || ''
-                ].join('\t') + '\n';
-            });
-            const blob = new Blob([txt], {type: 'text/plain;charset=utf-8'});
-            const a = document.createElement('a');
-            a.href = URL.createObjectURL(blob);
-            a.download = fileName;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(a.href);
-        }
-    }
+    // 글로벌 보고서 생성 로직을 최신 버전으로 사용하도록 통일
+    window.exportSelectedRowsReport = exportSelectedRowsReport;
     
     // 화주명 검증 (select 또는 input)
     const shipperSelect = document.getElementById('shipper');
@@ -619,21 +541,70 @@ function addTableRowClickListeners() {
             const clickedRow = event.target.closest('tr');
             if (clickedRow && clickedRow.parentNode === tableBody) {
                 console.log('테이블 행이 클릭되었습니다:', clickedRow);
+                
+                // ===== 행 클릭 진단 로깅 기능 =====
+                // cells[5] (BL 컬럼) 값 추출
+                const blValue = (clickedRow.cells[5]?.textContent || '').trim();
+                console.log(`🔍 클릭된 행의 BL 값: "${blValue}"`);
+                
+                // 모든 테이블 행에서 같은 BL 값을 가진 행들의 데이터 추출
+                const allRows = Array.from(tableBody.querySelectorAll('tr'));
+                const matchingIndices = [];
+                const matchingRowsData = [];
+                
+                allRows.forEach((row, index) => {
+                    const cellBlValue = (row.cells[5]?.textContent || '').trim();
+                    if (cellBlValue === blValue) {
+                        matchingIndices.push(index);
+                        
+                        // 지정된 셀들의 데이터 추출: [3,4,1,3,7,5,6]
+                        const rowData = {
+                            index: index,
+                            container: (row.cells[3]?.textContent || '').trim(),      // cells[3]: 컨테이너번호
+                            seal: (row.cells[4]?.textContent || '').trim(),           // cells[4]: SEAL
+                            importDate: (row.cells[1]?.textContent || '').trim(),     // cells[1]: 반입일
+                            container2: (row.cells[3]?.textContent || '').trim(),     // cells[3]: 컨테이너번호 (중복)
+                            qtyPlt: (row.cells[7]?.textContent || '').trim(),         // cells[7]: 수량(PLT)
+                            bl: (row.cells[5]?.textContent || '').trim(),             // cells[5]: BL
+                            itemName: (row.cells[6]?.textContent || '').trim()        // cells[6]: 품명
+                        };
+                        matchingRowsData.push(rowData);
+                    }
+                });
+                
+                console.log(`📊 BL: "${blValue}" - 일치하는 행의 index: [${matchingIndices.join(', ')}] (총 ${matchingIndices.length}개)`);
+                console.log(`📋 매칭된 행들의 데이터:`, matchingRowsData);
+                if (matchingIndices.length > 1) {
+                    console.log(`⚠️ 중복 감지! ${matchingIndices.length}개의 행이 같은 BL 값을 가지고 있습니다.`);
+                }
+                // 매칭된 행 데이터를 클립보드에 복사 및 전역 변수에 저장
+                if (navigator.clipboard && matchingRowsData.length > 0) {
+                    const copyText = JSON.stringify(matchingRowsData, null, 2);
+                    navigator.clipboard.writeText(copyText).catch(() => {
+                        console.warn('클립보드 복사 실패');
+                    });
+                }
+                
+                // 매칭된 행 데이터를 전역 변수에 저장 (보고서 생성 시 사용)
+                window.currentMatchedRowsData = matchingRowsData;
+                
+                // ===== 진단 로깅 끝 =====
+                
                 // 행의 data-record-key 추출 (Firebase 경로)
                 const recordKey = clickedRow.getAttribute('data-record-key');
                 currentModalRecordKey = recordKey;
                 console.log('📝 현재 modal record-key:', currentModalRecordKey);
                 // 행 데이터 추출
                 const rowData = extractRowData(clickedRow);
-                // 행 선택 액션 다이얼로그 표시
-                showRowActionDialog(clickedRow, rowData);
+                // 행 선택 액션 다이얼로그 표시 (매칭된 데이터 개수 전달)
+                showRowActionDialog(clickedRow, rowData, matchingRowsData.length);
             }
         });
     }
 }
 
 // 행 클릭 시 액션 선택 다이얼로그
-function showRowActionDialog(clickedRow, rowData) {
+function showRowActionDialog(clickedRow, rowData, matchCount = 1) {
     // 기존 다이얼로그 제거
     const existing = document.getElementById('rowActionDialog');
     if (existing) existing.remove();
@@ -672,6 +643,18 @@ function showRowActionDialog(clickedRow, rowData) {
     info.style.fontSize = '12px';
     info.style.color = '#555';
     box.appendChild(info);
+
+    // BL 매칭 개수 표시
+    const matchInfo = document.createElement('div');
+    matchInfo.textContent = `📊 BL 매칭: ${matchCount}건`;
+    matchInfo.style.fontSize = '11px';
+    matchInfo.style.fontWeight = 'bold';
+    matchInfo.style.padding = '4px 8px';
+    matchInfo.style.borderRadius = '4px';
+    matchInfo.style.textAlign = 'center';
+    matchInfo.style.color = matchCount > 1 ? '#dc3545' : '#28a745';
+    matchInfo.style.backgroundColor = matchCount > 1 ? '#fff3cd' : '#d4edda';
+    box.appendChild(matchInfo);
 
     const btnWrap = document.createElement('div');
     btnWrap.style.display = 'flex';
@@ -5598,46 +5581,224 @@ async function restructureDatabaseByConsignee() {
     }
 }
 
-// 선택된 행을 report.xlsx 포맷으로 내보내기 (요청 사양)
+// 선택된 행을 report.xlsx 포맷으로 내보내기 (ExcelJS 사용 - 완벽한 서식 보존)
 async function exportSelectedRowsReport() {
     const tableBody = document.querySelector('#containerTable tbody');
     if (!tableBody) {
+        alert('테이블을 찾을 수 없습니다.');
         return;
     }
 
-    const selectedRows = Array.from(tableBody.querySelectorAll('tr.selected-row'));
-    if (selectedRows.length === 0) {
+    let detailObjects;
+
+    // 1) 매칭된 행 데이터가 있으면 우선 사용 (행 클릭으로 생성된 데이터)
+    if (window.currentMatchedRowsData && window.currentMatchedRowsData.length > 0) {
+        console.log('🔵 매칭된 행 데이터 사용:', window.currentMatchedRowsData.length, '개');
+        detailObjects = window.currentMatchedRowsData.map((data) => ({
+            importDate: data.importDate || '',
+            shipper: data.shipper || '',
+            container: data.container || '',
+            seal: data.seal || '',
+            bl: data.bl || '',
+            itemName: data.itemName || '',
+            qtyPlt: data.qtyPlt || ''
+        }));
+    } else {
+        // 2) 매칭된 데이터가 없으면 선택된 행 또는 화면에 보이는 행 사용 (fallback)
+        console.log('🟡 선택된 행 또는 화면 표시 행 사용 (fallback)');
+        const selectedRows = Array.from(tableBody.querySelectorAll('tr.selected-row'));
+        const visibleRowsFallback = Array.from(tableBody.querySelectorAll('tr')).filter((row) => row.style.display !== 'none');
+        const rowsToUse = selectedRows.length > 0 ? selectedRows : visibleRowsFallback;
+
+        if (rowsToUse.length === 0) {
+            alert('내보낼 행이 없습니다. (선택된 행도 없고, 표시된 행도 없습니다)');
+            return;
+        }
+
+        const getCell = (row, idx) => (row.cells[idx]?.textContent || '').trim();
+        
+        // 상세데이터 객체 생성 (테이블 셀 기반)
+        detailObjects = rowsToUse.map((row) => ({
+            importDate: getCell(row, 1),
+            shipper: getCell(row, 2),
+            container: getCell(row, 3),
+            seal: getCell(row, 4),
+            bl: getCell(row, 5),
+            itemName: getCell(row, 6),
+            qtyPlt: getCell(row, 8)
+        }));
+    }
+
+    if (detailObjects.length === 0) {
+        alert('내보낼 데이터가 없습니다.');
         return;
     }
 
-    const getCell = (row, idx) => (row.cells[idx]?.textContent || '').trim();
     const sanitize = (text) => (text || '').replace(/[<>:"/\\|?*\[\]]/g, '_').trim();
 
-    const firstRow = selectedRows[0];
-    const firstDate = getCell(firstRow, 1);
-    const firstBl = getCell(firstRow, 5);
-    const firstItemName = getCell(firstRow, 6);
-    const firstContainer = getCell(firstRow, 3);
+    const first = detailObjects[0];
+    const fileName = `${sanitize(first.importDate)}_${sanitize(first.bl)}_${sanitize(first.itemName)}_${sanitize(first.container)}.xlsx` || 'report.xlsx';
 
-    const fileName = `${sanitize(firstDate)}_${sanitize(firstBl)}_${sanitize(firstItemName)}_${sanitize(firstContainer)}.xlsx` || 'report.xlsx';
-
+    // ExcelJS로 템플릿 로드
     try {
-        console.log('🔍 Report.xlsx 템플릿 로드 시도...');
-        
-        // report.xlsx 로드
+        console.log('🔍 ExcelJS로 report.xlsx 템플릿 로드 시도...');
         const response = await fetch('report.xlsx');
         if (!response.ok) {
-            throw new Error(`템플릿 로드 실패 (HTTP ${response.status})`);
+            throw new Error(`템플릿 파일을 찾을 수 없습니다 (HTTP ${response.status})`);
         }
         
         const buffer = await response.arrayBuffer();
-        console.log(`📦 버퍼 크기: ${buffer.byteLength} bytes`);
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.load(buffer);
         
-        // xlsx 파일을 Blob으로 생성하여 다운로드
-        // SheetJS는 스타일 보존이 완벽하지 않으므로, 원본 바이너리를 수정하는 방식 사용
-        const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        console.log('✅ ExcelJS 템플릿 로드 성공');
         
-        // 다운로드할 원본 Excel 파일 (모든 스타일 유지)
+        // report_merge 시트에서 값 읽기
+        const mergeWorksheet = workbook.getWorksheet('report_merge');
+        let blFromTemplate = '';
+        let importDateFromTemplate = '';
+        let itemNameFromTemplate = '';
+        let qtyPltFromTemplate = '';
+        let baseSeal = '';
+        
+        if (mergeWorksheet) {
+            // row(5).cells(3) = C5 (ItemName)
+            itemNameFromTemplate = mergeWorksheet.getCell('C5').value || first.itemName;
+            // row(5).cells(14) = N5 (ImportDate)
+            importDateFromTemplate = mergeWorksheet.getCell('N5').value || first.importDate;
+            // row(5).cells(4) = D5 (QtyPlt)
+            qtyPltFromTemplate = mergeWorksheet.getCell('D5').value || first.qtyPlt;
+            // row(12).cells(2) = B12 (Seal)
+            baseSeal = mergeWorksheet.getCell('B12').value || first.seal;
+            // BL은 first 객체에서
+            blFromTemplate = first.bl;
+            
+            console.log('📊 report_merge 시트에서 읽은 값:', {
+                itemName: itemNameFromTemplate,
+                importDate: importDateFromTemplate,
+                qtyPlt: qtyPltFromTemplate,
+                seal: baseSeal,
+                bl: blFromTemplate
+            });
+        }
+
+        const blValue = blFromTemplate || first.bl;
+        const importDateValue = importDateFromTemplate || first.importDate;
+        const itemNameValue = itemNameFromTemplate || first.itemName;
+        const qtyPltValue = qtyPltFromTemplate || first.qtyPlt;
+        const sealValue = baseSeal || first.seal;
+        
+        // detailObjects 동적 재구성: 모든 객체를 countValue 횟수만큼 row12 스타일로 생성
+        const expandedObjects = [];
+        
+        detailObjects.forEach((obj) => {
+            const countValue = Math.max(1, parseInt(obj.count, 10) || 1);
+            
+            for (let i = 0; i < countValue; i++) {
+                expandedObjects.push({
+                    ...obj,
+                    bl: blValue,
+                    importDate: importDateValue,
+                    qtyPlt: qtyPltValue
+                    // seal과 itemName은 각 obj의 원본 값 유지
+                });
+            }
+        });
+        
+        console.log(`📋 재구성된 객체 수: ${expandedObjects.length}개`);
+        
+        const worksheet = workbook.getWorksheet('report');
+        if (!worksheet) {
+            throw new Error('템플릿에 "report" 시트가 없습니다!');
+        }
+        
+        // 헤더 정보 채우기 (C2: BL, D3: 품명)
+        const cellC2 = worksheet.getCell('C2');
+        cellC2.value = blValue;
+        
+        const cellD3 = worksheet.getCell('D3');
+        cellD3.value = itemNameValue;
+
+        // report_merge 시트에도 주요 헤더 값 써주기 (빈 셀 방지)
+        if (mergeWorksheet) {
+            // C5: 품명, N5: 날짜, D5: 수량
+            mergeWorksheet.getCell('C5').value = blValue;
+            mergeWorksheet.getCell('M5').value = importDateValue;
+            mergeWorksheet.getCell('D5').value = qtyPltValue;
+        }
+        
+        // report_merge 시트의 row 12를 템플릿으로 사용하여 새 행 생성
+        let templateRow;
+        if (mergeWorksheet) {
+            templateRow = mergeWorksheet.getRow(12);
+            console.log('📋 report_merge 시트의 row 12를 템플릿으로 사용');
+        } else {
+            templateRow = worksheet.getRow(9);
+            console.log('📋 report 시트의 row 9를 기본 템플릿으로 사용');
+        }
+
+        // report 시트 전용 데이터 쓰기 함수
+        const writeReportRows = (targetSheet, startRow, baseRow) => {
+            expandedObjects.forEach((obj, idx) => {
+                const rowNum = startRow + idx;
+                const targetRow = targetSheet.getRow(rowNum);
+
+                if (idx > 0) {
+                    targetRow.height = baseRow.height;
+                    ['B', 'C', 'D', 'E'].forEach(col => {
+                        const templateCell = baseRow.getCell(col);
+                        const targetCell = targetRow.getCell(col);
+                        targetCell.style = JSON.parse(JSON.stringify(templateCell.style));
+                    });
+                }
+
+                // report 시트: B=container, C=seal, D=importDate, E=qtyPlt
+                targetRow.getCell('B').value = obj.container || '';
+                targetRow.getCell('C').value = obj.seal || '';
+                targetRow.getCell('D').value = obj.importDate || '';
+                targetRow.getCell('E').value = obj.qtyPlt || '';
+                targetRow.commit();
+            });
+        };
+
+        // report_merge 시트 전용 데이터 쓰기 함수
+        const writeMergeRows = (targetSheet, startRow, baseRow) => {
+            expandedObjects.forEach((obj, idx) => {
+                const rowNum = startRow + idx;
+                const targetRow = targetSheet.getRow(rowNum);
+
+                if (idx > 0) {
+                    targetRow.height = baseRow.height;
+                    ['B', 'C', 'D'].forEach(col => {
+                        const templateCell = baseRow.getCell(col);
+                        const targetCell = targetRow.getCell(col);
+                        targetCell.style = JSON.parse(JSON.stringify(templateCell.style));
+                    });
+                }
+
+                // report_merge 시트: B=seal, C=itemName, D=qtyPlt
+                targetRow.getCell('B').value = obj.seal || '';
+                targetRow.getCell('C').value = obj.itemName || '';
+                targetRow.getCell('D').value = obj.qtyPlt || '';
+                targetRow.commit();
+            });
+        };
+
+        // report 시트 채우기 (row 9부터)
+        writeReportRows(worksheet, 9, worksheet.getRow(9));
+
+        // report_merge 시트 채우기 (row 12부터)
+        if (mergeWorksheet) {
+            const mergeBaseRow = mergeWorksheet.getRow(12);
+            writeMergeRows(mergeWorksheet, 12, mergeBaseRow);
+        }
+        
+        // Excel 파일 생성 및 다운로드
+        const outputBuffer = await workbook.xlsx.writeBuffer();
+        const blob = new Blob([outputBuffer], { 
+            type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+        });
+        
         const link = document.createElement('a');
         link.href = URL.createObjectURL(blob);
         link.download = fileName;
@@ -5646,32 +5807,12 @@ async function exportSelectedRowsReport() {
         document.body.removeChild(link);
         URL.revokeObjectURL(link.href);
         
-        console.log(`✅ 파일 다운로드 완료: ${fileName}`);
-        return;
+        console.log('✅ ExcelJS로 Excel 파일 생성 완료:', fileName);
         
     } catch (err) {
-        console.error('❌ 오류:', err);
+        alert(`Excel 파일 생성 실패!\n\n${err.message}`);
+        console.error('❌ Excel 생성 실패:', err);
     }
-
-    // 템플릿 로드 실패 시 기본 시트 생성
-    const wsData = [];
-    wsData[1] = wsData[1] || [];
-    wsData[1][2] = firstBl;
-    wsData[2] = wsData[2] || [];
-    wsData[2][3] = firstItemName;
-    dataRows.forEach((rowData, idx) => {
-        wsData[startRow - 1 + idx] = wsData[startRow - 1 + idx] || [];
-        wsData[startRow - 1 + idx][1] = rowData[0];
-        wsData[startRow - 1 + idx][2] = rowData[1];
-        wsData[startRow - 1 + idx][3] = rowData[2];
-        wsData[startRow - 1 + idx][4] = rowData[3];
-    });
-
-    const ws = XLSX.utils.aoa_to_sheet(wsData);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'report');
-    XLSX.writeFile(wb, fileName);
-    showToast(`✅ 보고서가 생성되었습니다! 파일명: ${fileName}`, 5000);
 }
 
 // 전역에서 사용할 수 있도록 노출
