@@ -1624,6 +1624,9 @@ async function filterByDatePeriod(period) {
         
         // 필터링된 데이터 표시
         displayFilteredData(leafData, `${period} (${dateRange.start.toLocaleDateString()} ~ ${dateRange.end.toLocaleDateString()})`);
+
+        // 기간 요약 팝업 표시 (화주별 20FT/40FT 및 총 입고 수량)
+        showPeriodSummaryPopup(leafData, `${dateRange.start.toLocaleDateString()} ~ ${dateRange.end.toLocaleDateString()}`);
     } catch (error) {
         console.error('❌ 데이터 로드 실패:', error);
         alert(`데이터 로드 중 오류가 발생했습니다: ${error.message}`);
@@ -1668,10 +1671,226 @@ async function filterByCustomDateRange() {
         
         // 필터링된 데이터 표시
         displayFilteredData(leafData, `${startDate.toLocaleDateString()} ~ ${endDate.toLocaleDateString()}`);
+
+        // 기간 요약 팝업 표시 (화주별 20FT/40FT 및 총 입고 수량)
+        showPeriodSummaryPopup(leafData, `${startDate.toLocaleDateString()} ~ ${endDate.toLocaleDateString()}`);
     } catch (error) {
         console.error('❌ 데이터 로드 실패:', error);
         alert(`데이터 로드 중 오류가 발생했습니다: ${error.message}`);
     }
+}
+
+// Spec 값을 표준화하여 요약에 사용
+function normalizeSpecForSummary(rawSpec) {
+    if (!rawSpec) return '';
+    const value = String(rawSpec).trim().toUpperCase();
+    if (value.includes('40') && value.includes('F')) return '40FT';
+    if (value.includes('20') && value.includes('F')) return '20FT';
+    if (value === 'LCL' || value.includes('LCL')) return 'LCL';
+    return value;
+}
+
+// 기간 내 화주별 20FT/40FT 컨테이너 수량 집계 (컨테이너 단위로 중복 제거)
+function buildPeriodSummary(data) {
+    const shipperMap = new Map();
+    const overall = {
+        total: new Set(),
+        spec20: new Set(),
+        spec40: new Set()
+    };
+
+    data.forEach((item, idx) => {
+        const record = item?.data || {};
+        const shipper = (record.consignee || record.shipper || '미분류').trim();
+        const container = record.container || `ROW-${idx}`;
+        const spec = normalizeSpecForSummary(record.spec || '');
+
+        if (!shipperMap.has(shipper)) {
+            shipperMap.set(shipper, {
+                shipper,
+                total: new Set(),
+                spec20: new Set(),
+                spec40: new Set()
+            });
+        }
+
+        const entry = shipperMap.get(shipper);
+        entry.total.add(container);
+        overall.total.add(container);
+
+        if (spec === '20FT') {
+            entry.spec20.add(container);
+            overall.spec20.add(container);
+        } else if (spec === '40FT') {
+            entry.spec40.add(container);
+            overall.spec40.add(container);
+        }
+    });
+
+    const rows = Array.from(shipperMap.values())
+        .map(entry => ({
+            shipper: entry.shipper,
+            count20: entry.spec20.size,
+            count40: entry.spec40.size,
+            totalTeu: entry.spec20.size + entry.spec40.size * 2
+        }))
+        .sort((a, b) => b.totalTeu - a.totalTeu || a.shipper.localeCompare(b.shipper, 'ko'));
+
+    return {
+        rows,
+        totals: {
+            count20: overall.spec20.size,
+            count40: overall.spec40.size,
+            totalTeu: overall.spec20.size + overall.spec40.size * 2
+        }
+    };
+}
+
+// 요약 팝업 생성 및 표시
+function showPeriodSummaryPopup(data, rangeLabel) {
+    const summary = buildPeriodSummary(data || []);
+
+    // 기존 팝업이 있으면 제거 후 새로 생성
+    const existing = document.getElementById('periodSummaryModal');
+    if (existing) {
+        existing.remove();
+    }
+
+    const overlay = document.createElement('div');
+    overlay.id = 'periodSummaryModal';
+    overlay.style.position = 'fixed';
+    overlay.style.top = '0';
+    overlay.style.left = '0';
+    overlay.style.width = '100vw';
+    overlay.style.height = '100vh';
+    overlay.style.backgroundColor = 'rgba(0, 0, 0, 0.45)';
+    overlay.style.zIndex = '4000';
+    overlay.style.display = 'flex';
+    overlay.style.alignItems = 'center';
+    overlay.style.justifyContent = 'center';
+
+    const modal = document.createElement('div');
+    modal.style.width = '520px';
+    modal.style.maxWidth = '92vw';
+    modal.style.background = '#ffffff';
+    modal.style.borderRadius = '10px';
+    modal.style.boxShadow = '0 12px 30px rgba(0,0,0,0.25)';
+    modal.style.overflow = 'hidden';
+    modal.style.border = '1px solid #e9ecef';
+
+    const header = document.createElement('div');
+    header.style.background = 'linear-gradient(135deg, #007bff 0%, #0056b3 100%)';
+    header.style.color = '#fff';
+    header.style.padding = '12px 16px';
+    header.style.display = 'flex';
+    header.style.justifyContent = 'space-between';
+    header.style.alignItems = 'center';
+
+    const title = document.createElement('div');
+    title.textContent = `기간 요약 (${rangeLabel})`;
+    title.style.fontWeight = 'bold';
+    title.style.fontSize = '14px';
+
+    const closeBtn = document.createElement('button');
+    closeBtn.textContent = '닫기';
+    closeBtn.style.border = 'none';
+    closeBtn.style.background = 'rgba(255,255,255,0.2)';
+    closeBtn.style.color = '#fff';
+    closeBtn.style.padding = '6px 10px';
+    closeBtn.style.borderRadius = '6px';
+    closeBtn.style.cursor = 'pointer';
+    closeBtn.onclick = () => overlay.remove();
+
+    header.appendChild(title);
+    header.appendChild(closeBtn);
+
+    const body = document.createElement('div');
+    body.style.padding = '14px 16px 18px 16px';
+    body.style.fontSize = '12px';
+    body.style.color = '#343a40';
+    body.style.maxHeight = '70vh';
+    body.style.overflowY = 'auto';
+
+    // 총계 영역
+    const summaryBar = document.createElement('div');
+    summaryBar.style.display = 'grid';
+    summaryBar.style.gridTemplateColumns = 'repeat(3, 1fr)';
+    summaryBar.style.gap = '8px';
+    summaryBar.style.marginBottom = '12px';
+
+    const totalCards = [
+        { label: '총 TEU', value: summary.totals.totalTeu, bg: '#28a745' },
+        { label: '40FT', value: summary.totals.count40, bg: '#17a2b8' },
+        { label: '20FT', value: summary.totals.count20, bg: '#ffc107', color: '#212529' }
+    ];
+
+    totalCards.forEach(card => {
+        const cardEl = document.createElement('div');
+        cardEl.style.background = card.bg;
+        cardEl.style.color = card.color || '#fff';
+        cardEl.style.padding = '10px 12px';
+        cardEl.style.borderRadius = '8px';
+        cardEl.style.display = 'flex';
+        cardEl.style.flexDirection = 'column';
+        cardEl.style.alignItems = 'flex-start';
+        cardEl.style.justifyContent = 'center';
+        cardEl.style.boxShadow = '0 2px 8px rgba(0,0,0,0.12)';
+        cardEl.style.fontWeight = 'bold';
+        cardEl.innerHTML = `<div style="font-size:11px; opacity:0.9; margin-bottom:4px;">${card.label}</div><div style="font-size:18px;">${card.value}</div>`;
+        summaryBar.appendChild(cardEl);
+    });
+
+    // 화주별 테이블
+    const table = document.createElement('table');
+    table.style.width = '100%';
+    table.style.borderCollapse = 'collapse';
+    table.style.fontSize = '11px';
+
+    const thead = document.createElement('thead');
+    thead.innerHTML = `
+        <tr style="background:#f1f3f5; color:#495057;">
+            <th style="padding:8px; text-align:left; border-bottom:1px solid #dee2e6;">화주</th>
+            <th style="padding:8px; text-align:center; border-bottom:1px solid #dee2e6;">40FT</th>
+            <th style="padding:8px; text-align:center; border-bottom:1px solid #dee2e6;">20FT</th>
+            <th style="padding:8px; text-align:center; border-bottom:1px solid #dee2e6;">총 TEU</th>
+        </tr>`;
+
+    const tbody = document.createElement('tbody');
+
+    if (summary.rows.length === 0) {
+        const emptyRow = document.createElement('tr');
+        emptyRow.innerHTML = `<td colspan="4" style="padding:16px; text-align:center; color:#868e96;">선택한 기간에 데이터가 없습니다.</td>`;
+        tbody.appendChild(emptyRow);
+    } else {
+        summary.rows.forEach(row => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td style="padding:8px; border-bottom:1px solid #f1f3f5; text-align:left;">${row.shipper}</td>
+                <td style="padding:8px; border-bottom:1px solid #f1f3f5; text-align:center; font-weight:bold; color:#17a2b8;">${row.count40}</td>
+                <td style="padding:8px; border-bottom:1px solid #f1f3f5; text-align:center; font-weight:bold; color:#ffc107;">${row.count20}</td>
+                    <td style="padding:8px; border-bottom:1px solid #f1f3f5; text-align:center; font-weight:bold; color:#343a40;">${row.totalTeu}</td>`;
+            tbody.appendChild(tr);
+        });
+    }
+
+    table.appendChild(thead);
+    table.appendChild(tbody);
+
+    body.appendChild(summaryBar);
+    body.appendChild(table);
+
+    modal.appendChild(header);
+    modal.appendChild(body);
+    overlay.appendChild(modal);
+
+    // 오버레이 배경 클릭 시 닫기
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) {
+            overlay.remove();
+        }
+    });
+
+    document.body.appendChild(overlay);
 }
 
 // 필터링된 데이터를 테이블에 표시
