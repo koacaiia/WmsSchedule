@@ -452,6 +452,16 @@ tbody tr.selected-row {
     background-color: #fff !important;
 }
 
+/* Ctrl+클릭으로 선택된 행 스타일 */
+tbody tr.ctrl-selected-row {
+    background-color: #ffebee !important;
+    border-left: 4px solid #dc3545 !important;
+}
+
+tbody tr.ctrl-selected-row:hover {
+    background-color: #ffcdd2 !important;
+}
+
 tbody tr:hover {
     background-color: #e3f2fd;
     cursor: pointer;

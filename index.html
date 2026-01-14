@@ -45,7 +45,9 @@
             <!-- 전체 보기 및 초기화 -->
             <div class="filter-controls">
                 <button class="control-btn" onclick="addNewArrival()">신규입고</button>
+                <button class="control-btn" onclick="deleteSelectedRows()" style="background-color: #dc3545; color: white;">선택항목 삭제</button>
                 <button class="control-btn" onclick="exportTableToExcel()" style="background-color: #28a745; color: white;">Excel 파일 생성</button>
+                <button class="control-btn" id="initConsigneeBtn" onclick="collectAndRegisterConsignees()" style="background-color: #6f42c1; color: white; ">Consignee 초기화</button>
                 <button class="control-btn" onclick="restructureDatabaseByConsignee()" style="background-color: #dc3545; color: white;">DB 재구성</button>
                 <button class="control-btn" onclick="deleteDataByDateRange()" style="background-color: #ff4444; color: white;">DB 삭제</button>
                 <select id="shipperFilterSelect" onchange="filterTableByShipper()" class="shipper-select">
@@ -232,8 +234,11 @@
                             <input type="text" id="bl" name="bl" placeholder="B/L 번호를 입력하세요" required>
                         </div>
                         <div class="form-group">
-                            <label for="itemName">품명 *</label>
-                            <input type="text" id="itemName" name="itemName" placeholder="품명을 입력하세요" required>
+                            <button type="button" id="descriptionToggleBtn" class="shipper-toggle-btn">품명(Description) *</button>
+                            <select id="itemName" name="itemName" required style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px; background: white; cursor: pointer;">
+                                <option value="">-- 선택해주세요 --</option>
+                            </select>
+                            <input type="text" id="itemNameInput" name="itemNameInput" placeholder="품명을 입력하세요" required style="display: none; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 13px;">
                         </div>
                         <div class="form-group">
                             <label for="qtyEa">Qty(Ea)</label>
@@ -270,6 +275,7 @@
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" onclick="closeModal()">취소</button>
                 <button type="button" class="btn btn-danger" id="deleteArrivalBtn" onclick="window.handleDeleteArrival && window.handleDeleteArrival()">삭제</button>
+                <button type="button" class="btn btn-success" onclick="submitAndContinue()">추가등록</button>
                 <button type="button" class="btn btn-primary" onclick="submitNewArrival()">등록</button>
                 <button type="button" class="btn btn-info" onclick="selectRawDataFile()">RawData 등록</button>
                 <input type="file" id="rawDataFileInput" style="display: none;" accept=".xlsx,.xls,.xlsm" onchange="handleRawDataFileAndOpenWindow(event)">

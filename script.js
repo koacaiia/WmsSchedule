@@ -222,6 +222,11 @@ async function uploadToRealtimeDatabase(containerObject) {
                     console.log('✅ Firebase 업로드 완료!');
                     console.log('📍 저장 경로:', fullPath);
                     
+                    // ✨ NEW: Consignee와 Description 자동 등록 (submitNewArrival 시 호출)
+                    if (containerObject.consignee && containerObject.description) {
+                        await registerConsigneeIfNew(containerObject.consignee, containerObject.description);
+                    }
+                    
                     // 업로드 후 즉시 검증
                     console.log('🔍 업로드 검증 시작...');
                     
@@ -282,8 +287,98 @@ async function uploadToRealtimeDatabase(containerObject) {
     }
 }
 
-// 중복 컨테이너 번호 체크 함수
-function checkDuplicateContainer(containerNumber) {
+// Consignee 목록 로드 함수
+async function loadConsigneeList() {
+    try {
+        const consigneeRef = window.firebaseRef(window.firebaseDb, 'DeptName/WareHouseDept2/InCargo/Consignee');
+        
+        window.firebaseOnValue(consigneeRef, (snapshot) => {
+            const shipperSelect = document.getElementById('shipper');
+            if (!shipperSelect) return;
+            
+            // 기존 옵션 제거 (첫 번째 선택지 제외)
+            while (shipperSelect.children.length > 1) {
+                shipperSelect.removeChild(shipperSelect.lastChild);
+            }
+            
+            if (snapshot.exists()) {
+                const consigneeData = snapshot.val();
+                const consignees = Object.keys(consigneeData).sort();
+                
+                // Consignee 옵션 추가
+                consignees.forEach(consignee => {
+                    const option = document.createElement('option');
+                    option.value = consignee;
+                    option.textContent = consignee;
+                    shipperSelect.appendChild(option);
+                });
+                
+                console.log(`✅ Consignee 목록 로드 완료: ${consignees.length}개`);
+            }
+        }, { onlyOnce: true });
+    } catch (error) {
+        console.error('❌ Consignee 목록 로드 실패:', error);
+    }
+}
+
+// Consignee 변경 시 Description 목록 로드 함수
+async function loadDescriptionsByConsignee(consignee) {
+    try {
+        if (!consignee) {
+            // consignee 미선택 시 description select 초기화
+            const itemNameSelect = document.getElementById('itemName');
+            if (itemNameSelect) {
+                while (itemNameSelect.children.length > 1) {
+                    itemNameSelect.removeChild(itemNameSelect.lastChild);
+                }
+            }
+            return;
+        }
+        
+        const descriptionRef = window.firebaseRef(window.firebaseDb, `DeptName/WareHouseDept2/InCargo/Consignee/${consignee}`);
+        
+        window.firebaseOnValue(descriptionRef, (snapshot) => {
+            const itemNameSelect = document.getElementById('itemName');
+            if (!itemNameSelect) return;
+            
+            // 기존 옵션 제거 (첫 번째 선택지 제외)
+            while (itemNameSelect.children.length > 1) {
+                itemNameSelect.removeChild(itemNameSelect.lastChild);
+            }
+            
+            if (snapshot.exists()) {
+                const descriptions = snapshot.val();
+                
+                // descriptions가 배열이면
+                if (Array.isArray(descriptions)) {
+                    descriptions.forEach(desc => {
+                        const option = document.createElement('option');
+                        option.value = desc;
+                        option.textContent = desc;
+                        itemNameSelect.appendChild(option);
+                    });
+                }
+                // descriptions가 객체이면 (여러 데이터 구조 지원)
+                else if (typeof descriptions === 'object') {
+                    const descList = Object.keys(descriptions).sort();
+                    descList.forEach(desc => {
+                        const option = document.createElement('option');
+                        option.value = desc;
+                        option.textContent = desc;
+                        itemNameSelect.appendChild(option);
+                    });
+                }
+                
+                console.log(`✅ Description 목록 로드 완료: ${consignee}`);
+            }
+        }, { onlyOnce: true });
+    } catch (error) {
+        console.error('❌ Description 목록 로드 실패:', error);
+    }
+}
+
+// 중복 컨테이너 체크 함수
+async function checkDuplicateContainer(containerNumber) {
     return new Promise((resolve) => {
         const containersRef = window.firebaseRef(window.firebaseDb, 'containers');
         
@@ -306,7 +401,19 @@ function checkDuplicateContainer(containerNumber) {
     });
 }
 
-async function submitNewArrival() {
+// 추가등록 함수 - 데이터 저장 후 모든 입력값 유지하여 연속 입력 가능
+async function submitAndContinue() {
+    const result = await submitNewArrival(false); // closeModal 하지 않음
+    if (result && result.success) {
+        // 모든 입력값 유지 (초기화하지 않음)
+        // 첫 번째 입력 필드(반입일)에 포커스
+        document.getElementById('importDate').focus();
+        
+        console.log('✅ 추가등록 완료 - 모든 입력값 유지됨');
+    }
+}
+
+async function submitNewArrival(shouldCloseModal = true) {
     const form = document.getElementById('newArrivalForm');
     const formData = new FormData(form);
     // 글로벌 보고서 생성 로직을 최신 버전으로 사용하도록 통일
@@ -395,11 +502,21 @@ async function submitNewArrival() {
         // 요약 카드 업데이트
         updateSummaryCards();
         
-        // 모달 닫기
-        closeModal();
+        // ✨ NEW: Consignee 자동 등록 (submitNewArrival 시 호출)
+        if (containerObject.consignee) {
+            await registerConsigneeIfNew(containerObject.consignee);
+        }
+        
+        // 모달 닫기 (옵션에 따라)
+        if (shouldCloseModal) {
+            closeModal();
+        }
+        
+        return { success: true, id: uploadResult.id };
         
     } else {
         alert(`데이터 업로드 실패: ${uploadResult.error}`);
+        return { success: false, error: uploadResult.error };
     }
 }
 
@@ -540,6 +657,12 @@ function addTableRowClickListeners() {
             // 클릭된 요소가 tbody 내의 tr인지 확인
             const clickedRow = event.target.closest('tr');
             if (clickedRow && clickedRow.parentNode === tableBody) {
+                // Ctrl 키를 누른 상태로 클릭하면 빨간색으로 토글
+                if (event.ctrlKey || event.metaKey) {
+                    clickedRow.classList.toggle('ctrl-selected-row');
+                    console.log('🔴 Ctrl+클릭: 행 선택 토글');
+                    return;
+                }
                 console.log('테이블 행이 클릭되었습니다:', clickedRow);
                 
                 // ===== 행 클릭 진단 로깅 기능 =====
@@ -1430,12 +1553,15 @@ let draggedItemData = null;
 let currentModalRecordKey = null; // 현재 modal에 열려있는 record의 Firebase 경로
 
 // 신규입고 모달 열기
-function addNewArrival() {
+async function addNewArrival() {
     const modal = document.getElementById('newArrivalModal');
     const form = document.getElementById('newArrivalForm');
     const shipperSelect = document.getElementById('shipper');
     const shipperInput = document.getElementById('shipperInput');
     const shipperToggleBtn = document.getElementById('shipperToggleBtn');
+    const itemNameSelect = document.getElementById('itemName');
+    const itemNameInput = document.getElementById('itemNameInput');
+    const descriptionToggleBtn = document.getElementById('descriptionToggleBtn');
     const deleteBtn = document.getElementById('deleteArrivalBtn');
 
     currentModalRecordKey = null;
@@ -1456,6 +1582,23 @@ function addNewArrival() {
     if (shipperToggleBtn) {
         shipperToggleBtn.textContent = '화주명 *';
     }
+    
+    // 기본 품명 입력 모드는 select
+    if (itemNameSelect) {
+        itemNameSelect.style.display = 'block';
+        itemNameSelect.value = '';
+    }
+    if (itemNameInput) {
+        itemNameInput.style.display = 'none';
+        itemNameInput.value = '';
+    }
+    if (descriptionToggleBtn) {
+        descriptionToggleBtn.textContent = '품명(Description) *';
+    }
+    
+    // Consignee 목록 로드
+    await loadConsigneeList();
+    
     if (deleteBtn) {
         deleteBtn.style.display = 'none';
     }
@@ -5119,6 +5262,127 @@ document.addEventListener('DOMContentLoaded', function() {
 
 });
 
+// 선택된 행들 삭제 (Ctrl+클릭으로 선택된 행들)
+async function deleteSelectedRows() {
+    const tableBody = document.querySelector('#containerTable tbody');
+    if (!tableBody) {
+        alert('테이블을 찾을 수 없습니다.');
+        return;
+    }
+    
+    // ctrl-selected-row 클래스를 가진 행들 찾기
+    const selectedRows = tableBody.querySelectorAll('tr.ctrl-selected-row');
+    
+    if (selectedRows.length === 0) {
+        alert('삭제할 항목을 선택해주세요.\n\nCtrl+클릭으로 행을 선택할 수 있습니다.');
+        return;
+    }
+    
+    // 삭제할 레코드 정보 수집
+    const recordsToDelete = [];
+    selectedRows.forEach(row => {
+        const recordKey = row.getAttribute('data-record-key');
+        if (recordKey) {
+            recordsToDelete.push({
+                path: recordKey,
+                container: row.cells[3]?.textContent.trim() || '',
+                bl: row.cells[5]?.textContent.trim() || '',
+                itemName: row.cells[6]?.textContent.trim() || ''
+            });
+        }
+    });
+    
+    if (recordsToDelete.length === 0) {
+        alert('삭제할 수 있는 유효한 레코드가 없습니다.');
+        return;
+    }
+    
+    // 사용자 확인
+    const confirmMessage = `선택된 ${recordsToDelete.length}개 항목을 삭제하시겠습니까?\n\n` +
+        recordsToDelete.slice(0, 5).map(r => `- ${r.container} / ${r.bl} / ${r.itemName}`).join('\n') +
+        (recordsToDelete.length > 5 ? `\n... 외 ${recordsToDelete.length - 5}개` : '') +
+        `\n\n이 작업은 되돌릴 수 없습니다!`;
+    
+    if (!confirm(confirmMessage)) {
+        console.log('❌ 삭제 취소됨');
+        return;
+    }
+    
+    // 진행 상황 표시
+    const progressDiv = document.createElement('div');
+    progressDiv.id = 'deleteSelectedProgress';
+    progressDiv.innerHTML = `
+        <div style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); 
+                    background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+                    z-index: 2000; text-align: center; min-width: 400px;">
+            <h3>선택 항목 삭제 중...</h3>
+            <p id="deleteSelectedText">삭제 준비 중...</p>
+            <div style="width: 100%; height: 20px; background: #f0f0f0; border-radius: 10px; overflow: hidden; margin: 10px 0;">
+                <div id="deleteSelectedBar" style="height: 100%; background: #dc3545; width: 0%; transition: width 0.3s;"></div>
+            </div>
+            <div id="deleteSelectedDetails" style="font-size: 12px; color: #6c757d; margin-top: 10px;"></div>
+        </div>
+    `;
+    document.body.appendChild(progressDiv);
+    
+    try {
+        let deletedCount = 0;
+        let errorCount = 0;
+        
+        // 각 레코드 삭제
+        for (let i = 0; i < recordsToDelete.length; i++) {
+            const record = recordsToDelete[i];
+            
+            document.getElementById('deleteSelectedText').textContent = 
+                `삭제 중... (${i + 1}/${recordsToDelete.length})`;
+            document.getElementById('deleteSelectedBar').style.width = 
+                `${((i + 1) / recordsToDelete.length) * 100}%`;
+            document.getElementById('deleteSelectedDetails').textContent = 
+                `${record.container} / ${record.bl} / ${record.itemName}`;
+            
+            try {
+                const deleteRef = window.firebaseRef(window.firebaseDb, record.path);
+                await window.firebaseSet(deleteRef, null);
+                deletedCount++;
+                console.log(`✅ 삭제 완료: ${record.path}`);
+            } catch (error) {
+                errorCount++;
+                console.error(`❌ 삭제 실패: ${record.path}`, error);
+            }
+        }
+        
+        // 완료 메시지
+        document.getElementById('deleteSelectedText').textContent = '삭제 완료!';
+        document.getElementById('deleteSelectedBar').style.width = '100%';
+        document.getElementById('deleteSelectedBar').style.background = '#28a745';
+        document.getElementById('deleteSelectedDetails').textContent = 
+            `성공: ${deletedCount}개, 실패: ${errorCount}개`;
+        
+        setTimeout(() => {
+            document.body.removeChild(progressDiv);
+            
+            const resultMessage = errorCount > 0 ?
+                `삭제 완료!\n\n✅ 성공: ${deletedCount}개\n❌ 실패: ${errorCount}개\n\n데이터를 새로고침합니다.` :
+                `${deletedCount}개 항목이 성공적으로 삭제되었습니다!\n\n데이터를 새로고침합니다.`;
+            
+            alert(resultMessage);
+            
+            // 테이블 새로고침
+            loadInCargoDataOnPageLoad();
+        }, 1000);
+        
+    } catch (error) {
+        console.error('❌ 선택 항목 삭제 중 오류:', error);
+        
+        const progressDiv = document.getElementById('deleteSelectedProgress');
+        if (progressDiv) {
+            document.body.removeChild(progressDiv);
+        }
+        
+        alert(`삭제 중 오류가 발생했습니다:\n${error.message}`);
+    }
+}
+
 // 삭제 버튼 클릭 핸들러 - Firebase에서 데이터 삭제
 window.handleDeleteArrival = async function() {
     if (!currentModalRecordKey) {
@@ -6036,3 +6300,267 @@ async function exportSelectedRowsReport() {
 
 // 전역에서 사용할 수 있도록 노출
 window.exportSelectedRowsReport = exportSelectedRowsReport;
+
+// ========================================
+// 일회용 함수 구역 - 첫 실행 후 다음을 삭제해도 됩니다:
+// 1. 이 구역의 모든 함수
+// 2. initConsigneeBtn 버튼 관련 코드
+// ========================================
+
+/**
+ * 기존 데이터에서 consignee 값을 수집하여 등록하는 일회용 함수
+ * DeptName/WareHouseDept2/InCargo 하위 모든 leaf node에서 consignee를 추출
+ * DeptName/WareHouseDept2/InCargo/Consignee에 등록 (중복 제거)
+ */
+async function collectAndRegisterConsignees() {
+    try {
+        console.log('🚀 기존 Consignee 수집 및 등록 시작...');
+        
+        // 진행 상황 표시
+        const progressDiv = document.createElement('div');
+        progressDiv.id = 'consigneeProgress';
+        progressDiv.innerHTML = `
+            <div style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); 
+                        background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+                        z-index: 2000; text-align: center; min-width: 400px;">
+                <h3>Consignee 데이터 수집 중...</h3>
+                <p id="consigneeText">데이터 로드 중...</p>
+                <div style="width: 100%; height: 20px; background: #f0f0f0; border-radius: 10px; overflow: hidden; margin: 10px 0;">
+                    <div id="consigneeBar" style="height: 100%; background: #6f42c1; width: 0%; transition: width 0.3s;"></div>
+                </div>
+                <div id="consigneeDetails" style="font-size: 12px; color: #6c757d; margin-top: 10px;"></div>
+            </div>
+        `;
+        document.body.appendChild(progressDiv);
+        
+        // 1단계: 전체 InCargo 데이터 로드
+        document.getElementById('consigneeText').textContent = 'Firebase에서 데이터 로드 중...';
+        document.getElementById('consigneeBar').style.width = '10%';
+        
+        const inCargoRef = window.firebaseRef(window.firebaseDb, 'DeptName/WareHouseDept2/InCargo');
+        
+        const allData = await new Promise((resolve, reject) => {
+            window.firebaseOnValue(inCargoRef, (snapshot) => {
+                if (snapshot.exists()) {
+                    resolve(snapshot.val());
+                } else {
+                    reject(new Error('InCargo 경로에 데이터가 없습니다.'));
+                }
+            }, { onlyOnce: true });
+        });
+        
+        console.log('📊 전체 데이터 로드 완료');
+        document.getElementById('consigneeBar').style.width = '20%';
+        
+        // 2단계: 모든 leaf node에서 consignee와 description 값 추출
+        document.getElementById('consigneeText').textContent = 'Consignee와 Description 값 추출 중...';
+        document.getElementById('consigneeBar').style.width = '30%';
+        
+        const consigneeDescriptionMap = {}; // { consignee: Set<description> }
+        let processedCount = 0;
+        
+        function findAllConsignees(obj, path = '') {
+            if (obj === null || obj === undefined) return;
+            
+            if (typeof obj === 'object' && !Array.isArray(obj)) {
+                const keys = Object.keys(obj);
+                
+                keys.forEach(key => {
+                    const value = obj[key];
+                    if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+                        const hasNestedObjects = Object.values(value).some(v => 
+                            typeof v === 'object' && v !== null && !Array.isArray(v)
+                        );
+                        
+                        const currentPath = path ? `${path}/${key}` : key;
+                        
+                        if (!hasNestedObjects && value.consignee) {
+                            // leaf node 발견 - consignee와 description 추출
+                            const consignee = value.consignee.trim();
+                            const description = (value.description || value.itemName || '').trim();
+                            
+                            if (consignee && !consignee.includes('undefined')) {
+                                if (!consigneeDescriptionMap[consignee]) {
+                                    consigneeDescriptionMap[consignee] = new Set();
+                                }
+                                if (description && !description.includes('undefined')) {
+                                    consigneeDescriptionMap[consignee].add(description);
+                                }
+                                processedCount++;
+                                
+                                if (processedCount % 50 === 0) {
+                                    const consigneeCount = Object.keys(consigneeDescriptionMap).length;
+                                    console.log(`📌 ${processedCount}개 레코드 처리, ${consigneeCount}개 unique consignee 발견`);
+                                    document.getElementById('consigneeDetails').textContent = 
+                                        `처리된 레코드: ${processedCount}개, Unique Consignee: ${consigneeCount}개`;
+                                }
+                            }
+                        } else {
+                            // 더 깊이 탐색
+                            findAllConsignees(value, currentPath);
+                        }
+                    }
+                });
+            }
+        }
+        
+        findAllConsignees(allData);
+        
+        const consigneeCount = Object.keys(consigneeDescriptionMap).length;
+        console.log(`✅ Consignee와 Description 추출 완료: ${consigneeCount}개, 총 처리된 레코드: ${processedCount}개`);
+        console.log('📋 추출된 Consignee 목록:', consigneeDescriptionMap);
+        
+        if (consigneeCount === 0) {
+            alert('추출된 consignee 값이 없습니다.');
+            document.body.removeChild(progressDiv);
+            return;
+        }
+        
+        // 3단계: Consignee와 Description 노드에 등록
+        document.getElementById('consigneeText').textContent = 'Consignee와 Description을 Firebase에 등록 중...';
+        document.getElementById('consigneeBar').style.width = '50%';
+        
+        const consigneeRef = window.firebaseRef(window.firebaseDb, 'DeptName/WareHouseDept2/InCargo/Consignee');
+        
+        // Consignee별로 Description을 배열로 변환
+        const consigneeData = {};
+        Object.entries(consigneeDescriptionMap).forEach(([consignee, descSet]) => {
+            const descriptions = Array.from(descSet).sort();
+            consigneeData[consignee] = descriptions;
+        });
+        
+        // Firebase에 등록
+        console.log('📤 Consignee와 Description 데이터를 Firebase에 등록하는 중...');
+        console.log('📍 등록 데이터:', consigneeData);
+        await window.firebaseSet(consigneeRef, consigneeData);
+        
+        // 4단계: 완료
+        document.getElementById('consigneeText').textContent = '완료!';
+        document.getElementById('consigneeBar').style.width = '100%';
+        document.getElementById('consigneeBar').style.background = '#28a745';
+        document.getElementById('consigneeDetails').textContent = 
+            `✅ ${consigneeCount}개의 Consignee가 등록되었습니다.\n총 처리 레코드: ${processedCount}개`;
+        
+        setTimeout(() => {
+            document.body.removeChild(progressDiv);
+            
+            const resultMessage = `✅ Consignee와 Description 수집 및 등록 완료!
+
+📊 결과:
+- 등록된 Consignee: ${consigneeCount}개
+- 처리된 레코드: ${processedCount}개
+- 저장 위치: DeptName/WareHouseDept2/InCargo/Consignee/{consignee}/[description1, description2, ...]
+
+📝 이제부터 신규입고 등록 시 consignee를 선택하면 등록된 description 목록이 표시됩니다.
+
+이 함수는 이제 삭제해도 됩니다.
+(index.html의 initConsigneeBtn 버튼과 script.js의 collectAndRegisterConsignees 함수)`;
+            
+            alert(resultMessage);
+            console.log('✅ Consignee 등록 완료');
+        }, 1500);
+        
+    } catch (error) {
+        console.error('❌ Consignee 수집 오류:', error);
+        
+        const progressDiv = document.getElementById('consigneeProgress');
+        if (progressDiv) {
+            document.body.removeChild(progressDiv);
+        }
+        
+        alert(`Consignee 수집 중 오류가 발생했습니다:\n${error.message}`);
+    }
+}
+
+/**
+ * 신규입고 등록 시 consignee와 description을 DeptName/WareHouseDept2/InCargo/Consignee에 등록
+ * @param {string} consignee - 등록할 consignee 값
+ * @param {string} description - 등록할 description(품명) 값
+ */
+async function registerConsigneeIfNew(consignee, description) {
+    if (!consignee || consignee.trim() === '') {
+        console.log('⏭️ 빈 consignee 값 - 등록 생략');
+        return;
+    }
+    
+    try {
+        console.log(`📌 Consignee/Description 등록 확인: ${consignee} / ${description}`);
+        
+        const consigneeRef = window.firebaseRef(window.firebaseDb, `DeptName/WareHouseDept2/InCargo/Consignee`);
+        
+        // 기존 consignee 데이터 읽기 (객체 구조)
+        const existingData = await new Promise((resolve) => {
+            window.firebaseOnValue(consigneeRef, (snapshot) => {
+                resolve(snapshot.val());
+            }, { onlyOnce: true });
+        });
+        
+        // 기존 데이터가 없으면 객체 생성
+        const consigneeData = existingData || {};
+        
+        // Consignee가 없으면 생성
+        if (!consigneeData[consignee]) {
+            consigneeData[consignee] = [];
+            console.log(`✅ 새로운 Consignee 등록: ${consignee}`);
+        }
+        
+        // Description 추가 (중복 제거)
+        if (description && description.trim() && !consigneeData[consignee].includes(description.trim())) {
+            consigneeData[consignee].push(description.trim());
+            consigneeData[consignee].sort(); // 정렬 유지
+            console.log(`✅ Description 추가: ${consignee} > ${description}`);
+        }
+        
+        // Firebase에 업데이트
+        await window.firebaseSet(consigneeRef, consigneeData);
+        console.log(`📤 Consignee/Description Firebase 업데이트 완료`);
+        
+    } catch (error) {
+        console.error(`❌ Consignee/Description 등록 오류 (${consignee}/${description}):`, error);
+        // 오류가 발생해도 신규입고는 계속 진행되어야 함
+    }
+}
+
+// 페이지 로드 시 initConsigneeBtn 버튼 표시 (일회용 버튼)
+document.addEventListener('DOMContentLoaded', function() {
+    const initBtn = document.getElementById('initConsigneeBtn');
+    if (initBtn) {
+        // 버튼을 조건부로 표시 (필요할 때만 표시하도록 수정 가능)
+        // initBtn.style.display = 'block';
+        console.log('✅ Consignee 초기화 버튼 로드됨 (수동으로 보이도록 변경 필요)');
+    }
+    
+    // Consignee(화주명) select 변경 시 Description 로드
+    const shipperSelect = document.getElementById('shipper');
+    if (shipperSelect) {
+        shipperSelect.addEventListener('change', function() {
+            console.log(`🔄 Consignee 선택: ${this.value}`);
+            loadDescriptionsByConsignee(this.value);
+        });
+    }
+    
+    // Description Toggle 버튼 이벤트 리스너
+    const descriptionToggleBtn = document.getElementById('descriptionToggleBtn');
+    const itemNameSelect = document.getElementById('itemName');
+    const itemNameInput = document.getElementById('itemNameInput');
+    
+    if (descriptionToggleBtn && itemNameSelect && itemNameInput) {
+        descriptionToggleBtn.addEventListener('click', function() {
+            if (itemNameSelect.style.display !== 'none') {
+                // select 숨기고 input 표시
+                itemNameSelect.style.display = 'none';
+                itemNameInput.style.display = 'block';
+                itemNameInput.focus();
+                itemNameInput.value = '';
+                this.textContent = '품명(Description) * (선택 모드로 전환: 버튼 클릭)';
+            } else {
+                // input 숨기고 select 표시
+                itemNameInput.style.display = 'none';
+                itemNameSelect.style.display = 'block';
+                itemNameSelect.value = '';
+                itemNameSelect.focus();
+                this.textContent = '품명(Description) *';
+            }
+        });
+    }
+});
