@@ -1607,6 +1607,25 @@ async function addNewArrival() {
     }
 }
 
+// 신규입고 모달을 오늘/내일 날짜로 바로 열기
+async function quickOpenNewArrival(day) {
+    const target = day === 'tomorrow' ? 'tomorrow' : 'today';
+    const range = getDateRange(target);
+    const dateStr = formatDateToLocal(range.start);
+    const modal = document.getElementById('newArrivalModal');
+    const isOpen = modal && modal.style.display === 'block';
+
+    if (!isOpen) {
+        await addNewArrival();
+    }
+
+    const dateInput = document.getElementById('importDate');
+    if (dateInput) {
+        dateInput.value = dateStr;
+        dateInput.focus();
+    }
+}
+
 // 신규입고 모달 닫기 및 초기화
 function closeModal() {
     const modal = document.getElementById('newArrivalModal');
