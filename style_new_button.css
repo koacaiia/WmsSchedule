@@ -1,0 +1,9 @@
+/* 신규입고 버튼 크게 - style.css의 line 645 뒤에 추가할 내용 */
+
+/* 신규입고 버튼 크게 */
+.new-arrival-btn-large {
+    min-width: 180px !important;
+    padding: 6px 18px !important;
+    font-size: 12px !important;
+    font-weight: 700 !important;
+}

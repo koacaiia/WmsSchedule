@@ -44,12 +44,12 @@
             
             <!-- 전체 보기 및 초기화 -->
             <div class="filter-controls">
-                <button class="control-btn" onclick="addNewArrival()">신규입고</button>
+                <button class="control-btn new-arrival-btn-large" onclick="addNewArrival()" style="background-color: #6f42c1; color: white; min-width: 180px; padding: 6px 18px; font-size: 12px; font-weight: 700;">신규입고</button>
                 <button class="control-btn" onclick="deleteSelectedRows()" style="background-color: #dc3545; color: white;">선택항목 삭제</button>
                 <button class="control-btn" onclick="exportTableToExcel()" style="background-color: #28a745; color: white;">Excel 파일 생성</button>
-                <button class="control-btn" id="initConsigneeBtn" onclick="collectAndRegisterConsignees()" style="background-color: #6f42c1; color: white; ">Consignee 초기화</button>
-                <button class="control-btn" onclick="restructureDatabaseByConsignee()" style="background-color: #dc3545; color: white;">DB 재구성</button>
-                <button class="control-btn" onclick="deleteDataByDateRange()" style="background-color: #ff4444; color: white;">DB 삭제</button>
+                <button class="control-btn" id="initConsigneeBtn" onclick="collectAndRegisterConsignees()" style="background-color: #6f42c1; color: white;display: none;">Consignee 초기화</button>
+                <button class="control-btn" onclick="restructureDatabaseByConsignee()" style="background-color: #dc3545; color: white;display: none;">DB 재구성</button>
+                <button class="control-btn" onclick="deleteDataByDateRange()" style="background-color: #ff4444; color: white;display: none;">DB 삭제</button>
                 <select id="shipperFilterSelect" onchange="filterTableByShipper()" class="shipper-select">
                     <option value="">전체 화주</option>
                 </select>
